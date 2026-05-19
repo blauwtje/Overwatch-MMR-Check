@@ -223,13 +223,13 @@
 }
 
 /* Pulse-glow animation for above/smurf verdicts */
+@keyframes pulse-glow-opacity {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.15); }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .animate-pulse-glow {
     animation: pulse-glow-opacity 3s ease-in-out infinite;
-  }
-
-  @keyframes pulse-glow-opacity {
-    0%, 100% { filter: brightness(1); }
-    50% { filter: brightness(1.15); }
   }
 }
