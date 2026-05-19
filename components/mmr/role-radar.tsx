@@ -38,7 +38,8 @@ function polar(cx: number, cy: number, r: number, angle: number): [number, numbe
 export function RoleRadar({ zScores, roleColor, size = 220 }: RoleRadarProps) {
   const cx = size / 2;
   const cy = size / 2;
-  const outerRadius = size * 0.38;
+  // 0.32 keeps labels (outerRadius + 8) well within the viewBox on lateral axes
+  const outerRadius = size * 0.32;
 
   // Determine axis key order: winrate, kda-or-topHeroKda, avgDeaths, avgDamage, avgHealing
   const kdaKey = "topHeroKda" in zScores ? "topHeroKda" : "kda";
@@ -58,7 +59,7 @@ export function RoleRadar({ zScores, roleColor, size = 220 }: RoleRadarProps) {
     .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`)
     .join(" ") + " Z";
 
-  // Grid ring radii: half-radius (1.5σ midpoint) and full outer radius
+  // Inner ring sits at zToRadius(0) = outerRadius/2, i.e. the z=0 (mean) line
   const halfRadius = outerRadius / 2;
 
   // Axis line endpoints
@@ -70,11 +71,9 @@ export function RoleRadar({ zScores, roleColor, size = 220 }: RoleRadarProps) {
     polar(cx, cy, outerRadius + LABEL_OFFSET, angle)
   );
 
-  // Text anchor logic: left side → "end", right side → "start", top/bottom center → "middle"
+  // Text anchor logic: right side → "start", left side → "end", top/bottom → "middle"
   function textAnchor(angle: number): "start" | "middle" | "end" {
-    // Normalize angle to [0, 2π)
-    const a = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    const cos = Math.cos(a);
+    const cos = Math.cos(angle);
     if (cos > 0.1) return "start";
     if (cos < -0.1) return "end";
     return "middle";
