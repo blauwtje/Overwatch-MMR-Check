@@ -73,7 +73,10 @@ type HeroResponse = {
   [key: string]: unknown;
 };
 
-async function fetchHeroPortrait(key: string, isFirst: boolean): Promise<void> {
+// Set to true the first time a hero response is actually received (not skipped).
+let firstResponseSeen = false;
+
+async function fetchHeroPortrait(key: string): Promise<void> {
   const outPath = path.join(OUT_DIR, `${key}.webp`);
 
   if (fs.existsSync(outPath)) {
@@ -105,8 +108,9 @@ async function fetchHeroPortrait(key: string, isFirst: boolean): Promise<void> {
 
   const json = (await res.json()) as HeroResponse;
 
-  // On the first hero, log the top-level keys so we can confirm the portrait field path.
-  if (isFirst) {
+  // On the first actual API response, log the shape so we can verify the portrait field path.
+  if (!firstResponseSeen) {
+    firstResponseSeen = true;
     console.log("[debug] first response top-level keys:", Object.keys(json));
     console.log("[debug] portrait field value:", json.portrait ?? "(not found)");
     if (!json.portrait) {
@@ -151,19 +155,12 @@ async function main(): Promise<void> {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const keys = [...HERO_KEYS];
-  let firstProcessed = false;
 
   // Process in batches of CONCURRENCY with a delay between each batch.
   for (let i = 0; i < keys.length; i += CONCURRENCY) {
     const batch = keys.slice(i, i + CONCURRENCY);
 
-    await Promise.all(
-      batch.map((key) => {
-        const isFirst = !firstProcessed && i === 0 && batch.indexOf(key) === 0;
-        if (isFirst) firstProcessed = true;
-        return fetchHeroPortrait(key, isFirst);
-      })
-    );
+    await Promise.all(batch.map((key) => fetchHeroPortrait(key)));
 
     if (i + CONCURRENCY < keys.length) {
       await new Promise<void>((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
