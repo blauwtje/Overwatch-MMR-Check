@@ -1,10 +1,19 @@
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 import { ImageResponse } from "@vercel/og";
 import { headers } from "next/headers";
 import fs from "node:fs";
 import path from "node:path";
+
+// Module-level font cache — read once per cold start, not per request
+let _fontCache: Promise<[Buffer, Buffer]> | null = null;
+function getFonts(): Promise<[Buffer, Buffer]> {
+  const fontDir = path.join(process.cwd(), "app/fonts");
+  return (_fontCache ??= Promise.all([
+    fs.promises.readFile(path.join(fontDir, "barlow-condensed-700.woff2")),
+    fs.promises.readFile(path.join(fontDir, "barlow-condensed-900.woff2")),
+  ]));
+}
 import { fetchPlayerData } from "@/lib/fetch-player";
 import {
   verdictFor,
@@ -52,12 +61,7 @@ export async function GET(
   const host = h.get("host") ?? "owmmr.app";
   const proto = h.get("x-forwarded-proto") ?? "https";
 
-  // Load fonts
-  const fontDir = path.join(process.cwd(), "app/fonts");
-  const [font700, font900] = await Promise.all([
-    fs.promises.readFile(path.join(fontDir, "barlow-condensed-700.woff2")),
-    fs.promises.readFile(path.join(fontDir, "barlow-condensed-900.woff2")),
-  ]);
+  const [font700, font900] = await getFonts();
 
   const opts = {
     width: 1200,
@@ -90,9 +94,8 @@ export async function GET(
     const img = new ImageResponse(fallbackJsx, opts);
     return new Response(img.body, {
       headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=60, s-maxage=60",
         ...Object.fromEntries(img.headers.entries()),
+        "Cache-Control": "public, max-age=60, s-maxage=60",
       },
     });
   }
@@ -534,9 +537,8 @@ export async function GET(
   const img = new ImageResponse(jsx, opts);
   return new Response(img.body, {
     headers: {
-      "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
       ...Object.fromEntries(img.headers.entries()),
+      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
     },
   });
 }
