@@ -1,0 +1,32 @@
+/**
+ * owMMR gaming theme constants.
+ * Mirrors CSS variables from app/globals.css (lines 119-148).
+ * All values are plain hex or rgba strings — no CSS vars, no color-mix, no oklch.
+ *
+ * Used by OG generation and performance optimization passes.
+ */
+
+export const THEME = {
+  cyanAccent: "#00d4ff",
+  rankBronze: "#cd8b4e",
+  rankSilver: "#c0c7d0",
+  rankGold: "#f0c040",
+  rankPlatinum: "#5ecfef",
+  rankDiamond: "#78e8ff",
+  rankMaster: "#d78af5",
+  rankGrandmaster: "#ffa020",
+  rankUltimate: "#ffffff",
+  roleTank: "#5b9ef5",
+  roleDamage: "#f55b5b",
+  roleSupport: "#5bf5a0",
+  surface0: "#07070f",
+  surface1: "#0e0e1c",
+  surface2: "#161628",
+  surface3: "#1e1e35",
+  borderSubtle: "rgba(255,255,255,0.07)",
+  borderAccent: "rgba(0,212,255,0.3)",
+  textPrimary: "#f5f5f7",
+  textSecondary: "#b8b8c8",
+  textTertiary: "#8a8a98",
+  textDisabled: "#5a5a68",
+} as const;
