@@ -4,13 +4,13 @@ import type { components, operations } from "@/src/types/overfast";
 type PlayerSummary = components["schemas"]["PlayerSummary"];
 type PlayerStatsSummary = components["schemas"]["PlayerStatsSummary"];
 
-type TrimmedCareerHero = {
+export type TrimmedCareerHero = {
   game?: Record<string, number>;
   combat?: Record<string, number>;
   assists?: Record<string, number>;
   average?: Record<string, number>;
 };
-type TrimmedCareer = Partial<Record<string, TrimmedCareerHero>>;
+export type TrimmedCareer = Partial<Record<string, TrimmedCareerHero>>;
 
 export type OverFastError =
   | { type: "not_found" }

@@ -45,8 +45,6 @@ const STATS_GAMEMODES_FOR = (gamemode: Gamemode): ("competitive" | "quickplay")[
   return ["competitive", "quickplay"];
 };
 
-const ROLES: Role[] = ["tank", "damage", "support"];
-
 function emptyRoleMap(): Partial<Record<Role, RoleStats | null>> {
   return { tank: null, damage: null, support: null };
 }
@@ -177,7 +175,6 @@ export async function fetchPlayerData(
   } else {
     season = extractSeason(summary, platform);
   }
-  void ROLES;
 
   return {
     status: "ok",

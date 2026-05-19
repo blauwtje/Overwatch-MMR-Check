@@ -1,17 +1,9 @@
 import type { HeroBreakdown, Role } from "@/lib/algorithm/types";
 import { HERO_TO_ROLE } from "@/lib/overfast/hero-role";
 import type { components } from "@/src/types/overfast";
+import type { TrimmedCareer, TrimmedCareerHero } from "@/lib/overfast/client";
 
 type HeroKey = components["schemas"]["HeroKey"];
-
-// TrimmedCareer is defined in client.ts but not exported — redeclare locally for this module
-type TrimmedCareerHero = {
-  game?: Record<string, number>;
-  combat?: Record<string, number>;
-  assists?: Record<string, number>;
-  average?: Record<string, number>;
-};
-type TrimmedCareer = Partial<Record<string, TrimmedCareerHero>>;
 
 let warned = false;
 
