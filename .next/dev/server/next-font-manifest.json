@@ -1,5 +1,15 @@
 {
   "app": {
+    "[project]/app/_not-found/page": [
+      "static/media/4f530f52d514af96-s.p.0aapj9pyt9oam.woff2",
+      "static/media/303804218d80822e-s.p.11p_15xsjt-ie.woff2",
+      "static/media/d9b5d46d9a89ffe6-s.p.0agk34fg-1.z0.woff2",
+      "static/media/ddf6ae3f623ba878-s.p.0yabx1ygi_y9y.woff2",
+      "static/media/c6e2684784a55443-s.p.0v346keojskif.woff2",
+      "static/media/a083361d37caf3d1-s.p.08pvxdps0wo-e.woff2",
+      "static/media/6c98c9fb873995d2-s.p.0o4ax6vjjs2k3.woff2",
+      "static/media/797e433ab948586e-s.p.09zddjkbdep5a.woff2"
+    ],
     "[project]/app/page": [
       "static/media/4f530f52d514af96-s.p.0aapj9pyt9oam.woff2",
       "static/media/303804218d80822e-s.p.11p_15xsjt-ie.woff2",
