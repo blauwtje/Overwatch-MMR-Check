@@ -421,4 +421,5 @@ export type {
   Gamemode,
   Confidence,
   SystemRank,
+  HeroBreakdown,
 } from "./types";

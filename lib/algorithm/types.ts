@@ -1,3 +1,7 @@
+import type { components } from "@/src/types/overfast";
+
+type HeroKey = components["schemas"]["HeroKey"];
+
 export type CompetitiveDivision =
   | "bronze"
   | "silver"
@@ -16,7 +20,7 @@ export type MMRSource = "ranked" | "unranked" | "blended";
 export type Confidence = "low" | "medium" | "high";
 
 export interface HeroBreakdown {
-  hero: string; // HeroKey — using string to avoid circular import
+  hero: HeroKey;
   timePlayedSec: number;
   gamesPlayed: number;
   gamesWon: number;

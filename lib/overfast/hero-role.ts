@@ -35,6 +35,7 @@ export const HERO_TO_ROLE = {
   bastion: "damage",
   cassidy: "damage",
   echo: "damage",
+  freja: "damage",
   genji: "damage",
   hanzo: "damage",
   junkrat: "damage",
