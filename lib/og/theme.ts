@@ -1,11 +1,4 @@
-/**
- * owMMR gaming theme constants.
- * Mirrors CSS variables from app/globals.css (lines 119-148).
- * All values are plain hex or rgba strings — no CSS vars, no color-mix, no oklch.
- *
- * Used by OG generation and performance optimization passes.
- */
-
+// Mirrors CSS variables from app/globals.css (lines 119-148) as plain hex/rgba — no CSS vars
 export const THEME = {
   cyanAccent: "#00d4ff",
   rankBronze: "#cd8b4e",
