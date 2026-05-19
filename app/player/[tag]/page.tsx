@@ -122,7 +122,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
         }}
       />
 
-      <div className="relative z-10 max-w-2xl mx-auto px-4 py-8 pb-16">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-8 pb-16">
         {/* Back link */}
         <Link
           href="/"
@@ -132,7 +132,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           ← Back
         </Link>
 
-        {/* Share card (subsumes player header) */}
+        {/* Share card — full-width trading card */}
         <ShareCard
           username={data.username}
           displayTag={displayTag}
@@ -143,77 +143,80 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           shareUrl={shareUrl}
         />
 
-        {/* Stats-partial banner */}
-        {data.statsPartial && (
+        {/* Narrow center column: banner + primary MMR + toggles */}
+        <div className="max-w-2xl mx-auto">
+          {/* Stats-partial banner */}
+          {data.statsPartial && (
+            <div
+              className="flex items-center gap-3 px-4 py-2.5 rounded-lg mb-6 text-sm font-display"
+              style={{
+                background: "rgba(255,124,42,0.08)",
+                border: "1px solid rgba(255,124,42,0.2)",
+                borderLeftWidth: "3px",
+                borderLeftColor: "var(--orange-accent)",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <AlertTriangle
+                style={{ width: 14, height: 14, color: "var(--orange-accent)", flexShrink: 0 }}
+              />
+              <span>Some stats are unavailable — estimate may be less precise</span>
+            </div>
+          )}
+
+          {/* Primary MMR card */}
           <div
-            className="flex items-center gap-3 px-4 py-2.5 rounded-lg mb-6 text-sm font-display"
+            className="rounded-xl mb-6 relative overflow-hidden"
             style={{
-              background: "rgba(255,124,42,0.08)",
-              border: "1px solid rgba(255,124,42,0.2)",
-              borderLeftWidth: "3px",
-              borderLeftColor: "var(--orange-accent)",
-              color: "var(--text-secondary)",
+              background: "var(--surface-1)",
+              border: "1px solid var(--border-accent)",
+              boxShadow: "0 0 40px rgba(0,212,255,0.05)",
             }}
           >
-            <AlertTriangle
-              style={{ width: 14, height: 14, color: "var(--orange-accent)", flexShrink: 0 }}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.08) 0%, transparent 70%)",
+              }}
             />
-            <span>Some stats are unavailable — estimate may be less precise</span>
+            <div className="relative">
+              {data.mmr.primary ? (
+                <PrimaryMMRDisplay primary={data.mmr.primary} mmr={data.mmr} />
+              ) : (
+                <NoPrimaryMMR roles={ROLES} />
+              )}
+            </div>
           </div>
-        )}
 
-        {/* Primary MMR card */}
-        <div
-          className="rounded-xl mb-6 relative overflow-hidden"
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border-accent)",
-            boxShadow: "0 0 40px rgba(0,212,255,0.05)",
-          }}
-        >
+          {/* Toggle panel */}
           <div
-            className="absolute inset-0 pointer-events-none"
+            className="rounded-lg mb-6 overflow-hidden"
             style={{
-              background:
-                "radial-gradient(ellipse at 50% 0%, rgba(0,212,255,0.08) 0%, transparent 70%)",
+              background: "var(--surface-1)",
+              border: "1px solid var(--border-subtle)",
             }}
-          />
-          <div className="relative">
-            {data.mmr.primary ? (
-              <PrimaryMMRDisplay primary={data.mmr.primary} mmr={data.mmr} />
-            ) : (
-              <NoPrimaryMMR roles={ROLES} />
-            )}
+          >
+            <ToggleRow
+              label="Platform"
+              options={PLATFORMS}
+              value={platform}
+              labelFor={(p) => PLATFORM_LABEL[p]}
+              hrefFor={(p) => buildHref({ platform: p })}
+            />
+            <div style={{ borderTop: "1px solid var(--border-subtle)" }} />
+            <ToggleRow
+              label="Game mode"
+              options={GAMEMODES}
+              value={gamemode}
+              labelFor={(g) => GAMEMODE_LABEL[g]}
+              hrefFor={(g) => buildHref({ gamemode: g })}
+            />
           </div>
         </div>
 
-        {/* Toggle panel */}
-        <div
-          className="rounded-lg mb-6 overflow-hidden"
-          style={{
-            background: "var(--surface-1)",
-            border: "1px solid var(--border-subtle)",
-          }}
-        >
-          <ToggleRow
-            label="Platform"
-            options={PLATFORMS}
-            value={platform}
-            labelFor={(p) => PLATFORM_LABEL[p]}
-            hrefFor={(p) => buildHref({ platform: p })}
-          />
-          <div style={{ borderTop: "1px solid var(--border-subtle)" }} />
-          <ToggleRow
-            label="Game mode"
-            options={GAMEMODES}
-            value={gamemode}
-            labelFor={(g) => GAMEMODE_LABEL[g]}
-            hrefFor={(g) => buildHref({ gamemode: g })}
-          />
-        </div>
-
-        {/* Role cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {/* Role cards — triptych on desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           {ROLES.map((role) => (
             <RoleCard
               key={role}
@@ -225,12 +228,12 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           ))}
         </div>
 
-        {/* Algorithm breakdown */}
+        {/* Algorithm breakdown — three columns on desktop */}
         <AlgorithmBreakdown mmr={data.mmr} gamemode={data.gamemode} />
 
         {/* Footer disclaimer */}
         <p
-          className="text-xs font-display text-center mt-8 tracking-wide"
+          className="text-xs font-display text-center mt-8 tracking-wide max-w-2xl mx-auto"
           style={{ color: "var(--text-disabled)" }}
         >
           Unofficial estimate · Our model&apos;s estimate, not Blizzard&apos;s official MMR ·

@@ -82,6 +82,7 @@ export interface RoleMMRResult {
     sampleWeight: number;
     zScores: Record<string, number>;
   };
+  heroBreakdown?: HeroBreakdown[];
   reason?: string;
 }
 

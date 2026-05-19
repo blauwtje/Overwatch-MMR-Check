@@ -27,9 +27,10 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
       className="rounded-lg overflow-hidden"
       style={{ border: "1px solid var(--border-subtle)" }}
     >
+      {/* Toggle button — mobile only */}
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-5 py-4 text-left transition-all duration-150 hover:bg-white/[0.03]"
+        className="lg:hidden w-full flex items-center justify-between px-5 py-4 text-left transition-all duration-150 hover:bg-white/[0.03]"
         style={{ background: "var(--surface-1)" }}
       >
         <div className="flex items-center gap-3">
@@ -62,16 +63,45 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
         </span>
       </button>
 
-      {open && (
-        <div className="px-5 pb-5 space-y-6" style={{ background: "var(--surface-1)" }}>
-          <div
-            className="pt-4 pb-2 text-xs font-display tracking-wide"
-            style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}
-          >
-            Z-scores measure how far your stats deviate from average peers at your rank. The modifier
-            applies log-scaled dampening based on games played.
-          </div>
+      {/* Desktop-always-visible header */}
+      <div
+        className="hidden lg:flex items-center gap-3 px-5 py-4"
+        style={{ background: "var(--surface-1)", borderBottom: "1px solid var(--border-subtle)" }}
+      >
+        <span
+          className="text-xs font-display tracking-widest uppercase"
+          style={{ color: "var(--cyan-accent)" }}
+        >
+          Algorithm breakdown
+        </span>
+        <span
+          className="text-xs font-display px-2 py-0.5 rounded"
+          style={{
+            background: "rgba(0,212,255,0.18)",
+            color: "var(--cyan-accent)",
+            border: "1px solid rgba(0,212,255,0.2)",
+          }}
+        >
+          v{mmr.algorithmVersion}
+        </span>
+      </div>
 
+      {/* Content — mobile: accordion; desktop: always open */}
+      <div
+        className={`${open ? "" : "hidden"} lg:block`}
+        style={{ background: "var(--surface-1)" }}
+      >
+        {/* Description */}
+        <div
+          className="px-5 pt-4 pb-2 text-xs font-display tracking-wide"
+          style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}
+        >
+          Z-scores measure how far your stats deviate from average peers at your rank. The modifier
+          applies log-scaled dampening based on games played.
+        </div>
+
+        {/* Role columns — stack on mobile, three-col on desktop */}
+        <div className="px-5 pb-5 grid grid-cols-1 lg:grid-cols-3 lg:gap-8 space-y-6 lg:space-y-0">
           {roles.map((role) => {
             const result = mmr.perRole[role];
             if (result.status !== "ranked" || !result.breakdown) return null;
@@ -83,7 +113,7 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
               result.competitiveGames !== undefined || result.quickplayGames !== undefined;
 
             return (
-              <div key={role}>
+              <div key={role} className="pt-4 lg:pt-0">
                 <p
                   className="text-xs font-display tracking-widest uppercase mb-3"
                   style={{ color: rColor }}
@@ -213,16 +243,16 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
               </div>
             );
           })}
-
-          <p
-            className="text-xs font-display pt-2"
-            style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-disabled)" }}
-          >
-            Peer baselines are seeded from community data and updated monthly. Estimates are not
-            official Blizzard data.
-          </p>
         </div>
-      )}
+
+        <p
+          className="px-5 pb-5 text-xs font-display"
+          style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "0.75rem", color: "var(--text-disabled)" }}
+        >
+          Peer baselines are seeded from community data and updated monthly. Estimates are not
+          official Blizzard data.
+        </p>
+      </div>
     </div>
   );
 }

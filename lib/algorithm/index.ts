@@ -16,7 +16,7 @@ import type {
   HeroBreakdown,
 } from "./types";
 
-export const ALGORITHM_VERSION = "1.2.0";
+export const ALGORITHM_VERSION = "1.2.1";
 
 const ROLES: Role[] = ["tank", "damage", "support"];
 const UNRANKED_REFERENCE_DIVISION: CompetitiveDivision = "platinum";
@@ -26,6 +26,8 @@ const UNRANKED_MMR_SPAN = 1500; // 10× the ranked coefficient
 const TOP_HERO_KDA_DAMPENER = 0.8;
 const HERO_BREAKDOWN_MIN_HEROES = 3;
 const HERO_BREAKDOWN_TOP_PLAYTIME_SHARE = 0.8;
+// per-hero confidence: full trust at 30 games (narrower than role-tier K=200, hero is a tighter question)
+const HERO_SAMPLE_CONFIDENCE_K = 30;
 
 function zscore(value: number, mean: number, stddev: number): number {
   if (stddev === 0) return 0;
@@ -39,6 +41,11 @@ function clamp(value: number, min: number, max: number): number {
 // log10-based weight: full trust at 200 games, near zero below 5
 function sampleSizeWeight(gamesPlayed: number): number {
   return clamp(Math.log10(gamesPlayed + 1) / Math.log10(200), 0, 1);
+}
+
+// per-hero weight: full trust at HERO_SAMPLE_CONFIDENCE_K games
+function heroSampleWeight(gamesPlayed: number): number {
+  return clamp(Math.log10(gamesPlayed + 1) / Math.log10(HERO_SAMPLE_CONFIDENCE_K), 0, 1);
 }
 
 function confidenceFor(sampleWeight: number): Confidence {
@@ -143,10 +150,10 @@ function computeZScores(
     const totalAllTime = stats.heroBreakdown.reduce((sum, b) => sum + b.timePlayedSec, 0);
 
     if (totalAllTime > 0 && totalTop3Time / totalAllTime >= HERO_BREAKDOWN_TOP_PLAYTIME_SHARE) {
-      // Compute weighted-average KDA of top 3 heroes by playtime
-      const topHeroKda = totalTop3Time > 0
-        ? top3.reduce((sum, b) => sum + b.kda * b.timePlayedSec, 0) / totalTop3Time
-        : 0;
+      // Compute weighted-average KDA of top 3 heroes, dampened by per-hero sample size
+      const top3Numerator = top3.reduce((sum, b) => sum + b.kda * b.timePlayedSec * heroSampleWeight(b.gamesPlayed), 0);
+      const top3Denominator = top3.reduce((sum, b) => sum + b.timePlayedSec * heroSampleWeight(b.gamesPlayed), 0);
+      const topHeroKda = top3Denominator > 0 ? top3Numerator / top3Denominator : 0;
       const topHeroKdaZ = zscore(topHeroKda, peers.kda.mean, peers.kda.stddev) * TOP_HERO_KDA_DAMPENER;
 
       // Replace the 'kda' key with 'topHeroKda' so the breakdown UI labels it correctly
@@ -187,6 +194,7 @@ function computeRankedRoleMMR(
       source,
       systemRank: mmrToRank(baseMMR),
       ...sampleSizes,
+      heroBreakdown: stats.heroBreakdown,
       reason: "insufficient_games",
     };
   }
@@ -224,6 +232,7 @@ function computeRankedRoleMMR(
     systemRank: mmrToRank(estimatedMMR),
     source,
     ...sampleSizes,
+    heroBreakdown: stats.heroBreakdown,
     breakdown: {
       winRateMod: Math.round(zScores.winrate * weights.winrate * 150 * sampleWeight),
       kdaMod: Math.round((zScores.topHeroKda ?? zScores.kda) * weights.kda * 150 * sampleWeight),
@@ -262,6 +271,7 @@ function computeUnrankedRoleMMR(
       confidence: "low",
       source,
       ...sampleSizes,
+      heroBreakdown: stats.heroBreakdown,
       reason: "insufficient_games",
     };
   }
@@ -295,6 +305,7 @@ function computeUnrankedRoleMMR(
     systemRank,
     source,
     ...sampleSizes,
+    heroBreakdown: stats.heroBreakdown,
     breakdown: {
       winRateMod: Math.round(zScores.winrate * weights.winrate * UNRANKED_MMR_SPAN * sampleWeight),
       kdaMod: Math.round((zScores.topHeroKda ?? zScores.kda) * weights.kda * UNRANKED_MMR_SPAN * sampleWeight),
