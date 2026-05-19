@@ -119,6 +119,7 @@ export async function getPlayerCareer(
   qs.set("gamemode", gamemode);
 
   const url = `${getBaseUrl()}/players/${encodeURIComponent(playerId)}/stats/career?${qs}`;
+  // PlayerCareerStats type from schema is verbose; trimmed below before returning
   const result = await fetchOverFast<Record<string, unknown>>(url);
 
   if (!result.ok) {
@@ -132,6 +133,9 @@ export async function getPlayerCareer(
 
   for (const [heroKey, heroData] of Object.entries(rawData)) {
     if (heroKey === "all-heroes") continue;
+
+    // Guard against null hero entries (permitted by OpenAPI spec)
+    if (heroData === null || typeof heroData !== "object") continue;
 
     const hero = heroData as Record<string, unknown>;
     const trimmedHero: TrimmedCareerHero = {};
