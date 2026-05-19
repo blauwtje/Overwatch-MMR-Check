@@ -9,6 +9,7 @@ import { AlgorithmBreakdown } from "@/components/mmr/breakdown";
 import { ShareCard } from "@/components/mmr/share-card";
 import { AlertTriangle } from "lucide-react";
 import type { Platform, Role, Gamemode } from "@/lib/algorithm/types";
+import { buildOgUrl } from "@/lib/og/build-share-url";
 
 interface Props {
   params: Promise<{ tag: string }>;
@@ -27,11 +28,29 @@ function parseGamemode(raw: string | undefined): Gamemode {
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { tag } = await params;
-  const { platform } = await searchParams;
-  const displayTag = tag.replace("-", "#");
+  const { platform, gamemode } = await searchParams;
+  const displayTag = tag.replace(/-(?=\d{4,8}$)/, "#");
+  const resolvedPlatform = parsePlatform(platform);
+  const resolvedGamemode = parseGamemode(gamemode);
+
+  const h = await headers();
+  const host = h.get("host") ?? "owmmr.app";
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const ogUrl = buildOgUrl(host, proto, tag, resolvedPlatform, resolvedGamemode);
+
   return {
     title: `${displayTag} — owMMR`,
-    description: `Estimated MMR for Overwatch 2 player ${displayTag} on ${platform ?? "PC"}.`,
+    description: `Estimated MMR for Overwatch 2 player ${displayTag} on ${resolvedPlatform.toUpperCase()}.`,
+    openGraph: {
+      title: `${displayTag} — owMMR`,
+      description: `Overwatch 2 MMR estimate`,
+      images: [{ url: ogUrl, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${displayTag} — owMMR`,
+      images: [ogUrl],
+    },
   };
 }
 
@@ -104,6 +123,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   if (sp.gamemode) qs.set("gamemode", sp.gamemode);
   const qsStr = qs.toString();
   const shareUrl = `${proto}://${host}/player/${tag}${qsStr ? `?${qsStr}` : ""}`;
+  const ogUrl = buildOgUrl(host, proto, tag, platform, gamemode);
 
   return (
     <div
@@ -141,6 +161,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           gamemode={data.gamemode}
           mmr={data.mmr}
           shareUrl={shareUrl}
+          ogUrl={ogUrl}
         />
 
         {/* Narrow center column: banner + primary MMR + toggles */}

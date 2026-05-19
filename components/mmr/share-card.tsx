@@ -26,6 +26,7 @@ interface ShareCardProps {
   gamemode: Gamemode;
   mmr: MMREstimate;
   shareUrl: string;
+  ogUrl?: string;
 }
 
 export function ShareCard({
@@ -36,6 +37,7 @@ export function ShareCard({
   gamemode,
   mmr,
   shareUrl,
+  ogUrl,
 }: ShareCardProps) {
   const verdictInputs = ROLES.map((role) => {
     const r = mmr.perRole[role];
@@ -158,6 +160,8 @@ export function ShareCard({
             title={`owMMR — ${displayTag}`}
             text={shareText}
             url={shareUrl}
+            ogUrl={ogUrl}
+            displayTag={displayTag}
             className="shrink-0"
           />
         </div>
