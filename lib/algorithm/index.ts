@@ -13,13 +13,19 @@ import type {
   Confidence,
   MMRSource,
   SystemRank,
+  HeroBreakdown,
 } from "./types";
 
-export const ALGORITHM_VERSION = "1.1.0";
+export const ALGORITHM_VERSION = "1.2.0";
 
 const ROLES: Role[] = ["tank", "damage", "support"];
 const UNRANKED_REFERENCE_DIVISION: CompetitiveDivision = "platinum";
 const UNRANKED_MMR_SPAN = 1500; // 10× the ranked coefficient
+
+// dampens the top-hero KDA bonus to counter the systematic gap between top-hero KDA and role-mean KDA
+const TOP_HERO_KDA_DAMPENER = 0.8;
+const HERO_BREAKDOWN_MIN_HEROES = 3;
+const HERO_BREAKDOWN_TOP_PLAYTIME_SHARE = 0.8;
 
 function zscore(value: number, mean: number, stddev: number): number {
   if (stddev === 0) return 0;
@@ -51,7 +57,7 @@ function blendStats(
   if (total === 0) return comp;
   const cw = comp.games_played / total;
   const qw = qp.games_played / total;
-  return {
+  const merged: RoleStats = {
     games_played: total,
     games_won: comp.games_won + qp.games_won,
     winrate: comp.winrate * cw + qp.winrate * qw,
@@ -69,6 +75,52 @@ function blendStats(
       healing: comp.total.healing + qp.total.healing,
     },
   };
+
+  const aBreakdown = comp.heroBreakdown;
+  const bBreakdown = qp.heroBreakdown;
+  if (aBreakdown || bBreakdown) {
+    merged.heroBreakdown = blendHeroBreakdowns(aBreakdown ?? [], bBreakdown ?? []);
+  }
+
+  const breakdown = merged.heroBreakdown;
+  if (breakdown && breakdown.length > 0) {
+    const totalTime = breakdown.reduce((sum, b) => sum + b.timePlayedSec, 0);
+    merged.specializationRatio = totalTime > 0 ? breakdown[0].timePlayedSec / totalTime : 0;
+    merged.heroCount = breakdown.filter(b => b.timePlayedSec >= 3600).length;
+  }
+
+  return merged;
+}
+
+function blendHeroBreakdowns(a: HeroBreakdown[], b: HeroBreakdown[]): HeroBreakdown[] {
+  const map = new Map<string, HeroBreakdown>();
+  for (const breakdown of [...a, ...b]) {
+    const existing = map.get(breakdown.hero);
+    if (!existing) {
+      map.set(breakdown.hero, { ...breakdown });
+    } else {
+      // Weighted average KDA by time played
+      const totalTime = existing.timePlayedSec + breakdown.timePlayedSec;
+      const blendedKda = totalTime > 0
+        ? (existing.kda * existing.timePlayedSec + breakdown.kda * breakdown.timePlayedSec) / totalTime
+        : 0;
+      map.set(breakdown.hero, {
+        hero: existing.hero,
+        timePlayedSec: existing.timePlayedSec + breakdown.timePlayedSec,
+        gamesPlayed: existing.gamesPlayed + breakdown.gamesPlayed,
+        gamesWon: existing.gamesWon + breakdown.gamesWon,
+        winrate: 0, // recomputed below
+        kda: blendedKda,
+      });
+    }
+  }
+  // Recompute winrate from blended gamesPlayed/gamesWon
+  const merged = Array.from(map.values()).map(b => ({
+    ...b,
+    winrate: b.gamesPlayed > 0 ? (b.gamesWon / b.gamesPlayed) * 100 : 0,
+  }));
+  // Re-sort desc by timePlayedSec, truncate to 10
+  return merged.sort((a, b) => b.timePlayedSec - a.timePlayedSec).slice(0, 10);
 }
 
 function computeZScores(
@@ -78,13 +130,31 @@ function computeZScores(
   stats: RoleStats
 ) {
   const peers = PEER_BASELINES[platform][role][division];
-  return {
-    winrate: zscore(stats.winrate, peers.winrate.mean, peers.winrate.stddev),
-    kda: zscore(stats.kda, peers.kda.mean, peers.kda.stddev),
-    avgDeaths: -zscore(stats.average.deaths, peers.avgDeaths.mean, peers.avgDeaths.stddev),
-    avgDamage: zscore(stats.average.damage, peers.avgDamage.mean, peers.avgDamage.stddev),
-    avgHealing: zscore(stats.average.healing, peers.avgHealing.mean, peers.avgHealing.stddev),
-  };
+  const winrateZ = zscore(stats.winrate, peers.winrate.mean, peers.winrate.stddev);
+  const kdaZ = zscore(stats.kda, peers.kda.mean, peers.kda.stddev);
+  const avgDeathsZ = -zscore(stats.average.deaths, peers.avgDeaths.mean, peers.avgDeaths.stddev);
+  const avgDamageZ = zscore(stats.average.damage, peers.avgDamage.mean, peers.avgDamage.stddev);
+  const avgHealingZ = zscore(stats.average.healing, peers.avgHealing.mean, peers.avgHealing.stddev);
+
+  // Check if we have sufficient hero breakdown data to use the more accurate topHeroKda signal
+  if (stats.heroBreakdown && stats.heroBreakdown.length >= HERO_BREAKDOWN_MIN_HEROES) {
+    const top3 = stats.heroBreakdown.slice(0, 3);
+    const totalTop3Time = top3.reduce((sum, b) => sum + b.timePlayedSec, 0);
+    const totalAllTime = stats.heroBreakdown.reduce((sum, b) => sum + b.timePlayedSec, 0);
+
+    if (totalAllTime > 0 && totalTop3Time / totalAllTime >= HERO_BREAKDOWN_TOP_PLAYTIME_SHARE) {
+      // Compute weighted-average KDA of top 3 heroes by playtime
+      const topHeroKda = totalTop3Time > 0
+        ? top3.reduce((sum, b) => sum + b.kda * b.timePlayedSec, 0) / totalTop3Time
+        : 0;
+      const topHeroKdaZ = zscore(topHeroKda, peers.kda.mean, peers.kda.stddev) * TOP_HERO_KDA_DAMPENER;
+
+      // Replace the 'kda' key with 'topHeroKda' so the breakdown UI labels it correctly
+      return { winrate: winrateZ, topHeroKda: topHeroKdaZ, avgDeaths: avgDeathsZ, avgDamage: avgDamageZ, avgHealing: avgHealingZ };
+    }
+  }
+
+  return { winrate: winrateZ, kda: kdaZ, avgDeaths: avgDeathsZ, avgDamage: avgDamageZ, avgHealing: avgHealingZ };
 }
 
 interface CompetitiveRankInput {
@@ -126,7 +196,7 @@ function computeRankedRoleMMR(
 
   const rawScore =
     zScores.winrate * weights.winrate +
-    zScores.kda * weights.kda +
+    (zScores.topHeroKda ?? zScores.kda) * weights.kda +
     zScores.avgDeaths * weights.avgDeaths +
     zScores.avgDamage * weights.avgDamage +
     zScores.avgHealing * weights.avgHealing;
@@ -156,7 +226,7 @@ function computeRankedRoleMMR(
     ...sampleSizes,
     breakdown: {
       winRateMod: Math.round(zScores.winrate * weights.winrate * 150 * sampleWeight),
-      kdaMod: Math.round(zScores.kda * weights.kda * 150 * sampleWeight),
+      kdaMod: Math.round((zScores.topHeroKda ?? zScores.kda) * weights.kda * 150 * sampleWeight),
       roleMod: Math.round(
         (zScores.avgDeaths * weights.avgDeaths +
           zScores.avgDamage * weights.avgDamage +
@@ -165,7 +235,7 @@ function computeRankedRoleMMR(
           sampleWeight
       ),
       sampleWeight,
-      zScores,
+      zScores: zScores as unknown as Record<string, number>,
     },
     reason: isPotentialSmurf ? "potential_smurf" : undefined,
   };
@@ -201,7 +271,7 @@ function computeUnrankedRoleMMR(
 
   const rawScore =
     zScores.winrate * weights.winrate +
-    zScores.kda * weights.kda +
+    (zScores.topHeroKda ?? zScores.kda) * weights.kda +
     zScores.avgDeaths * weights.avgDeaths +
     zScores.avgDamage * weights.avgDamage +
     zScores.avgHealing * weights.avgHealing;
@@ -227,7 +297,7 @@ function computeUnrankedRoleMMR(
     ...sampleSizes,
     breakdown: {
       winRateMod: Math.round(zScores.winrate * weights.winrate * UNRANKED_MMR_SPAN * sampleWeight),
-      kdaMod: Math.round(zScores.kda * weights.kda * UNRANKED_MMR_SPAN * sampleWeight),
+      kdaMod: Math.round((zScores.topHeroKda ?? zScores.kda) * weights.kda * UNRANKED_MMR_SPAN * sampleWeight),
       roleMod: Math.round(
         (zScores.avgDeaths * weights.avgDeaths +
           zScores.avgDamage * weights.avgDamage +
@@ -236,7 +306,7 @@ function computeUnrankedRoleMMR(
           sampleWeight
       ),
       sampleWeight,
-      zScores,
+      zScores: zScores as unknown as Record<string, number>,
     },
   };
 }
@@ -421,4 +491,5 @@ export type {
   Gamemode,
   Confidence,
   SystemRank,
+  HeroBreakdown,
 } from "./types";

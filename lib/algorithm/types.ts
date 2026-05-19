@@ -1,3 +1,7 @@
+import type { components } from "@/src/types/overfast";
+
+type HeroKey = components["schemas"]["HeroKey"];
+
 export type CompetitiveDivision =
   | "bronze"
   | "silver"
@@ -14,6 +18,15 @@ export type ResolvedPlatform = "pc" | "console";
 export type Gamemode = "ranked" | "unranked" | "both";
 export type MMRSource = "ranked" | "unranked" | "blended";
 export type Confidence = "low" | "medium" | "high";
+
+export interface HeroBreakdown {
+  hero: HeroKey;
+  timePlayedSec: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  winrate: number; // percentage (0-100)
+  kda: number;
+}
 
 export interface RoleStats {
   games_played: number;
@@ -32,6 +45,10 @@ export interface RoleStats {
     damage: number;
     healing: number;
   };
+  // Optional career enrichment fields (populated when career data is available)
+  heroBreakdown?: HeroBreakdown[]; // sorted desc by timePlayedSec, top 10
+  specializationRatio?: number; // top-1-hero timePlayedSec / total role timePlayedSec
+  heroCount?: number; // count of heroes with timePlayedSec >= 3600
 }
 
 export interface SystemRank {

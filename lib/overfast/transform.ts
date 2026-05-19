@@ -4,6 +4,7 @@ import type {
   ResolvedPlatform,
   RoleStats,
   CompetitiveDivision,
+  HeroBreakdown,
 } from "@/lib/algorithm/types";
 
 export interface PlayerCompetitiveRank {
@@ -77,4 +78,22 @@ export function extractSeason(
   platform: ResolvedPlatform
 ): number | null {
   return summary.competitive?.[platform]?.season ?? null;
+}
+
+export function attachHeroBreakdowns(
+  roleStats: Partial<Record<Role, RoleStats | null>>,
+  heroBreakdownsByRole: Partial<Record<Role, HeroBreakdown[]>>
+): void {
+  for (const [roleKey, breakdowns] of Object.entries(heroBreakdownsByRole) as [Role, HeroBreakdown[]][]) {
+    const rs = roleStats[roleKey];
+    if (rs == null) continue;
+
+    rs.heroBreakdown = breakdowns;
+
+    const totalTime = breakdowns.reduce((sum, b) => sum + b.timePlayedSec, 0);
+    rs.specializationRatio =
+      totalTime > 0 ? breakdowns[0].timePlayedSec / totalTime : 0;
+
+    rs.heroCount = breakdowns.filter((b) => b.timePlayedSec >= 3600).length;
+  }
 }

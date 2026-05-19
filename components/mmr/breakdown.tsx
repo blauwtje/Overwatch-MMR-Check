@@ -8,6 +8,15 @@ interface BreakdownProps {
   mmr: MMREstimate;
 }
 
+const ZSCORE_LABELS: Record<string, string> = {
+  winrate: "Win rate",
+  kda: "KDA",
+  avgDeaths: "Avg deaths",
+  avgDamage: "Avg damage",
+  avgHealing: "Avg healing",
+  topHeroKda: "Top hero KDA",
+};
+
 export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
   const [open, setOpen] = useState(false);
   const roles: Role[] = ["tank", "damage", "support"];
@@ -136,7 +145,7 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                     return (
                       <div key={stat} className="flex items-center gap-3">
                         <span className="text-xs font-display opacity-40 w-28 shrink-0 capitalize">
-                          {stat.replace(/([A-Z])/g, " $1").toLowerCase()}
+                          {ZSCORE_LABELS[stat] ?? stat.replace(/([A-Z])/g, " $1").trim()}
                         </span>
                         <div
                           className="flex-1 h-1 rounded-full overflow-hidden"
