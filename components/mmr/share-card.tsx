@@ -71,7 +71,7 @@ export function ShareCard({
   return (
     <section
       id="share-card-root"
-      className="rounded-xl relative overflow-hidden mb-6"
+      className="rounded-xl relative overflow-hidden mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500"
       style={{
         background: "var(--surface-1)",
         border: "1px solid var(--border-accent)",
@@ -170,7 +170,7 @@ export function ShareCard({
 
         {/* Verdict — dominant typographic block */}
         {!primaryMissing && (
-          <div className="px-5 sm:px-6 pb-4">
+          <div className="px-5 sm:px-6 pb-4 animate-in fade-in zoom-in-95 delay-100 duration-300">
             <Verdict delta={delta} smurfFlag={smurfFlag} size="lg" />
             {mmr.primary && (
               <p className="font-mono text-xs mt-1.5" style={{ color: "var(--text-tertiary)" }}>

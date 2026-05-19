@@ -3,6 +3,7 @@
 import { useState, memo } from "react";
 import type { MMREstimate, Role, Gamemode } from "@/lib/algorithm/types";
 import { roleLabel, roleColor } from "@/lib/rank-utils";
+import { RoleRadar } from "@/components/mmr/role-radar";
 
 interface BreakdownProps {
   mmr: MMREstimate;
@@ -147,6 +148,11 @@ export const AlgorithmBreakdown = memo(function AlgorithmBreakdown({ mmr }: Brea
                       }}
                     />
                   </div>
+                </div>
+
+                {/* Role radar chart */}
+                <div className="mb-3">
+                  <RoleRadar zScores={bd.zScores} roleColor={rColor} size={220} />
                 </div>
 
                 {/* Modifier breakdown */}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Role } from "@/lib/algorithm/types";
+import { cn } from "@/lib/utils";
 
 const SIZE_PX = { sm: 40, md: 56, lg: 80 } as const;
 type HeroSize = keyof typeof SIZE_PX;
@@ -32,7 +33,7 @@ export function HeroPortrait({ heroKey, role, size = "md", className }: HeroPort
         width={px}
         height={px}
         onError={() => setImgError(true)}
-        className={className}
+        className={cn("transition-transform duration-200 hover:scale-105", className)}
         style={{ width: px, height: px, objectFit: "cover", borderRadius: 4 }}
       />
     );
@@ -40,7 +41,7 @@ export function HeroPortrait({ heroKey, role, size = "md", className }: HeroPort
 
   return (
     <div
-      className={className}
+      className={cn("transition-transform duration-200 hover:scale-105", className)}
       style={{
         width: px,
         height: px,
