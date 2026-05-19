@@ -34,13 +34,12 @@ export function extractHeroBreakdownByRole(
 
     const timePlayedSec = heroData.game?.["time_played"] ?? 0;
     const gamesPlayed = heroData.game?.["games_played"] ?? 0;
+    const rawWon = heroData.game?.["games_won"];
+    const rawLost = heroData.game?.["games_lost"];
     const gamesWon =
-      heroData.game?.["games_won"] ??
-      Math.max(
-        0,
-        (heroData.game?.["games_played"] ?? 0) -
-          (heroData.game?.["games_lost"] ?? 0)
-      );
+      rawWon != null ? rawWon :
+      rawLost != null ? Math.max(0, gamesPlayed - rawLost) :
+      0; // both absent: default to 0 rather than over-inflating
     const winrate = gamesPlayed > 0 ? (gamesWon / gamesPlayed) * 100 : 0;
     const kda =
       ((heroData.combat?.["eliminations"] ?? 0) +
