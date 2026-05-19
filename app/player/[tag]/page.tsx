@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { fetchPlayerData } from "@/lib/fetch-player";
 import { RoleCard } from "@/components/mmr/role-card";
 import { PrimaryMMRDisplay, NoPrimaryMMR } from "@/components/mmr/primary-mmr";
 import { AlgorithmBreakdown } from "@/components/mmr/breakdown";
+import { ShareCard } from "@/components/mmr/share-card";
+import { AlertTriangle } from "lucide-react";
 import type { Platform, Role, Gamemode } from "@/lib/algorithm/types";
 
 interface Props {
@@ -92,6 +95,16 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const buildHref = (next: { platform?: Platform; gamemode?: Gamemode }) =>
     `/player/${tag}?platform=${next.platform ?? platform}&gamemode=${next.gamemode ?? gamemode}`;
 
+  // Build canonical share URL from request headers
+  const h = await headers();
+  const host = h.get("host") ?? "owmmr.app";
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const qs = new URLSearchParams();
+  if (sp.platform) qs.set("platform", sp.platform);
+  if (sp.gamemode) qs.set("gamemode", sp.gamemode);
+  const qsStr = qs.toString();
+  const shareUrl = `${proto}://${host}/player/${tag}${qsStr ? `?${qsStr}` : ""}`;
+
   return (
     <div
       className="min-h-screen"
@@ -119,73 +132,37 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           ← Back
         </Link>
 
-        {/* Player header */}
-        <div className="flex items-center gap-4 mb-6">
-          {data.avatar && (
-            <img
-              src={data.avatar}
-              alt={data.username}
-              className="w-14 h-14 rounded-lg shrink-0"
-              style={{ border: "2px solid var(--border-accent)" }}
-            />
-          )}
-          <div>
-            <h1
-              className="font-display font-black leading-none"
-              style={{
-                fontSize: "clamp(28px, 6vw, 42px)",
-                letterSpacing: "-0.02em",
-                color: "var(--text-primary)",
-              }}
-            >
-              {displayTag}
-            </h1>
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
-              <span
-                className="text-xs font-display tracking-widest uppercase px-2 py-0.5 rounded"
-                style={{
-                  background: "rgba(0,212,255,0.1)",
-                  color: "var(--cyan-accent)",
-                  border: "1px solid rgba(0,212,255,0.2)",
-                }}
-              >
-                {PLATFORM_LABEL[data.platform]}
-              </span>
-              <span
-                className="text-xs font-display tracking-widest uppercase px-2 py-0.5 rounded"
-                style={{
-                  background: "rgba(0,212,255,0.06)",
-                  color: "var(--cyan-accent)",
-                  border: "1px solid rgba(0,212,255,0.15)",
-                }}
-              >
-                {GAMEMODE_LABEL[data.gamemode]}
-              </span>
-              {data.season && (
-                <span
-                  className="text-xs font-display tracking-wide"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
-                  Season {data.season}
-                </span>
-              )}
-              {data.statsPartial && (
-                <span
-                  className="text-xs font-display px-2 py-0.5 rounded"
-                  style={{
-                    background: "rgba(255,124,42,0.1)",
-                    color: "var(--orange-accent)",
-                    border: "1px solid rgba(255,124,42,0.2)",
-                  }}
-                >
-                  Stats unavailable · Rank-only estimate
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* Share card (subsumes player header) */}
+        <ShareCard
+          username={data.username}
+          displayTag={displayTag}
+          avatar={data.avatar}
+          platform={data.platform}
+          gamemode={data.gamemode}
+          mmr={data.mmr}
+          shareUrl={shareUrl}
+        />
 
-        {/* Primary MMR */}
+        {/* Stats-partial banner */}
+        {data.statsPartial && (
+          <div
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg mb-6 text-sm font-display"
+            style={{
+              background: "rgba(255,124,42,0.08)",
+              border: "1px solid rgba(255,124,42,0.2)",
+              borderLeftWidth: "3px",
+              borderLeftColor: "var(--orange-accent)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            <AlertTriangle
+              style={{ width: 14, height: 14, color: "var(--orange-accent)", flexShrink: 0 }}
+            />
+            <span>Some stats are unavailable — estimate may be less precise</span>
+          </div>
+        )}
+
+        {/* Primary MMR card */}
         <div
           className="rounded-xl mb-6 relative overflow-hidden"
           style={{
@@ -203,24 +180,11 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           />
           <div className="relative">
             {data.mmr.primary ? (
-              <PrimaryMMRDisplay primary={data.mmr.primary} />
+              <PrimaryMMRDisplay primary={data.mmr.primary} mmr={data.mmr} />
             ) : (
               <NoPrimaryMMR roles={ROLES} />
             )}
           </div>
-        </div>
-
-        {/* Role cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          {ROLES.map((role) => (
-            <RoleCard
-              key={role}
-              role={role}
-              result={data.mmr.perRole[role]}
-              gamemode={data.gamemode}
-              showPlatformChip={data.platform === "mixed"}
-            />
-          ))}
         </div>
 
         {/* Toggle panel */}
@@ -246,6 +210,19 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             labelFor={(g) => GAMEMODE_LABEL[g]}
             hrefFor={(g) => buildHref({ gamemode: g })}
           />
+        </div>
+
+        {/* Role cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {ROLES.map((role) => (
+            <RoleCard
+              key={role}
+              role={role}
+              result={data.mmr.perRole[role]}
+              gamemode={data.gamemode}
+              showPlatformChip={data.platform === "mixed"}
+            />
+          ))}
         </div>
 
         {/* Algorithm breakdown */}

@@ -3,6 +3,12 @@
 "use strict";
 
 __turbopack_context__.s([
+    "DIVISION_ORDER",
+    ()=>DIVISION_ORDER,
+    "aggregateTierDelta",
+    ()=>aggregateTierDelta,
+    "compareDivisionTier",
+    ()=>compareDivisionTier,
     "confidenceLabel",
     ()=>confidenceLabel,
     "divisionLabel",
@@ -12,7 +18,13 @@ __turbopack_context__.s([
     "roleColor",
     ()=>roleColor,
     "roleLabel",
-    ()=>roleLabel
+    ()=>roleLabel,
+    "tierDelta",
+    ()=>tierDelta,
+    "tierIndex",
+    ()=>tierIndex,
+    "verdictFor",
+    ()=>verdictFor
 ]);
 function rankColor(division) {
     const map = {
@@ -60,6 +72,94 @@ function confidenceLabel(confidence) {
 }
 function divisionLabel(division) {
     return division.charAt(0).toUpperCase() + division.slice(1);
+}
+const DIVISION_ORDER = [
+    "bronze",
+    "silver",
+    "gold",
+    "platinum",
+    "diamond",
+    "master",
+    "grandmaster",
+    "ultimate"
+];
+function tierIndex(dt) {
+    const idx = DIVISION_ORDER.indexOf(dt.division);
+    const clamped = Math.max(1, Math.min(5, dt.tier));
+    return idx * 5 + (5 - clamped);
+}
+function tierDelta(system, actual) {
+    return tierIndex(system) - tierIndex(actual);
+}
+function compareDivisionTier(a, b) {
+    return Math.sign(tierIndex(a) - tierIndex(b));
+}
+function aggregateTierDelta(inputs) {
+    const valid = inputs.filter((i)=>i.system && i.actual);
+    if (valid.length === 0) return null;
+    const totalGames = valid.reduce((sum, i)=>sum + i.games, 0);
+    const equalWeight = totalGames === 0;
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const input of valid){
+        const delta = tierDelta(input.system, input.actual);
+        const weight = equalWeight ? 1 : input.games;
+        weightedSum += delta * weight;
+        totalWeight += weight;
+    }
+    return Math.round(weightedSum / totalWeight);
+}
+function verdictFor(delta, smurfFlag) {
+    if (smurfFlag) {
+        return {
+            text: "SMURFING DETECTED",
+            color: "var(--orange-accent)",
+            tone: "smurf"
+        };
+    }
+    if (delta === null) {
+        return {
+            text: "MODEL-INFERRED RANK",
+            color: "var(--text-tertiary)",
+            tone: "unknown"
+        };
+    }
+    const muted = "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)";
+    if (delta >= 3) return {
+        text: "PLAYING WAY ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 2) return {
+        text: "PLAYING 2 TIERS ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 1) return {
+        text: "PLAYING 1 TIER ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 0) return {
+        text: "PLAYING AT RANK",
+        color: "var(--text-secondary)",
+        tone: "neutral"
+    };
+    if (delta === -1) return {
+        text: "PLAYING 1 TIER BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
+    if (delta === -2) return {
+        text: "PLAYING 2 TIERS BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
+    return {
+        text: "PLAYING WAY BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
 }
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
@@ -112,13 +212,13 @@ function AlgorithmBreakdown({ mmr }) {
                                 children: "Algorithm breakdown"
                             }, void 0, false, {
                                 fileName: "[project]/components/mmr/breakdown.tsx",
-                                lineNumber: 26,
+                                lineNumber: 27,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                 className: "text-xs font-display px-2 py-0.5 rounded",
                                 style: {
-                                    background: "rgba(0,212,255,0.1)",
+                                    background: "rgba(0,212,255,0.18)",
                                     color: "var(--cyan-accent)",
                                     border: "1px solid rgba(0,212,255,0.2)"
                                 },
@@ -128,13 +228,13 @@ function AlgorithmBreakdown({ mmr }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/mmr/breakdown.tsx",
-                                lineNumber: 32,
+                                lineNumber: 33,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/mmr/breakdown.tsx",
-                        lineNumber: 25,
+                        lineNumber: 26,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -147,13 +247,13 @@ function AlgorithmBreakdown({ mmr }) {
                         children: "↓"
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/breakdown.tsx",
-                        lineNumber: 43,
+                        lineNumber: 44,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/mmr/breakdown.tsx",
-                lineNumber: 20,
+                lineNumber: 21,
                 columnNumber: 7
             }, this),
             open && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -163,14 +263,15 @@ function AlgorithmBreakdown({ mmr }) {
                 },
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "pt-4 pb-2 text-xs font-display tracking-wide opacity-50",
+                        className: "pt-4 pb-2 text-xs font-display tracking-wide",
                         style: {
-                            borderTop: "1px solid var(--border-subtle)"
+                            borderTop: "1px solid var(--border-subtle)",
+                            color: "var(--text-secondary)"
                         },
                         children: "Z-scores measure how far your stats deviate from average peers at your rank. The modifier applies log-scaled dampening based on games played."
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/breakdown.tsx",
-                        lineNumber: 57,
+                        lineNumber: 58,
                         columnNumber: 11
                     }, this),
                     roles.map((role)=>{
@@ -178,6 +279,8 @@ function AlgorithmBreakdown({ mmr }) {
                         if (result.status !== "ranked" || !result.breakdown) return null;
                         const bd = result.breakdown;
                         const rColor = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["roleColor"])(role);
+                        const hasQPCaveat = result.source !== "ranked";
+                        const showSampleSizes = result.competitiveGames !== undefined || result.quickplayGames !== undefined;
                         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             children: [
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -188,20 +291,38 @@ function AlgorithmBreakdown({ mmr }) {
                                     children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["roleLabel"])(role)
                                 }, void 0, false, {
                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                    lineNumber: 74,
+                                    lineNumber: 78,
                                     columnNumber: 17
+                                }, this),
+                                showSampleSizes && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "text-xs font-display mb-2",
+                                    style: {
+                                        color: "var(--text-tertiary)"
+                                    },
+                                    children: [
+                                        result.competitiveGames !== undefined && `Comp: ${result.competitiveGames}g`,
+                                        result.competitiveGames !== undefined && result.quickplayGames !== undefined && " · ",
+                                        result.quickplayGames !== undefined && `QP: ${result.quickplayGames}g`
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/components/mmr/breakdown.tsx",
+                                    lineNumber: 87,
+                                    columnNumber: 19
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "mb-3",
                                     children: [
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                            className: "flex justify-between text-xs font-display opacity-50 mb-1",
+                                            className: "flex justify-between text-xs font-display mb-1",
+                                            style: {
+                                                color: "var(--text-secondary)"
+                                            },
                                             children: [
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                     children: "Sample confidence"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 84,
+                                                    lineNumber: 103,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -211,13 +332,13 @@ function AlgorithmBreakdown({ mmr }) {
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 85,
+                                                    lineNumber: 104,
                                                     columnNumber: 21
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/mmr/breakdown.tsx",
-                                            lineNumber: 83,
+                                            lineNumber: 99,
                                             columnNumber: 19
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -233,18 +354,18 @@ function AlgorithmBreakdown({ mmr }) {
                                                 }
                                             }, void 0, false, {
                                                 fileName: "[project]/components/mmr/breakdown.tsx",
-                                                lineNumber: 91,
+                                                lineNumber: 110,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/components/mmr/breakdown.tsx",
-                                            lineNumber: 87,
+                                            lineNumber: 106,
                                             columnNumber: 19
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                    lineNumber: 82,
+                                    lineNumber: 98,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -269,33 +390,36 @@ function AlgorithmBreakdown({ mmr }) {
                                             },
                                             children: [
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                                    className: "text-xs font-display opacity-40 mb-1",
+                                                    className: "text-xs font-display mb-1",
+                                                    style: {
+                                                        color: "var(--text-secondary)"
+                                                    },
                                                     children: label
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 113,
+                                                    lineNumber: 132,
                                                     columnNumber: 23
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                                     className: "text-base font-display font-bold",
                                                     style: {
-                                                        color: value === 0 ? "rgba(255,255,255,0.3)" : value > 0 ? "var(--role-support)" : "var(--role-damage)"
+                                                        color: value === 0 ? "var(--text-tertiary)" : value > 0 ? "var(--role-support)" : "var(--role-damage)"
                                                     },
                                                     children: value > 0 ? `+${value}` : value
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 114,
+                                                    lineNumber: 138,
                                                     columnNumber: 23
                                                 }, this)
                                             ]
                                         }, label, true, {
                                             fileName: "[project]/components/mmr/breakdown.tsx",
-                                            lineNumber: 108,
+                                            lineNumber: 127,
                                             columnNumber: 21
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                    lineNumber: 102,
+                                    lineNumber: 121,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -307,11 +431,14 @@ function AlgorithmBreakdown({ mmr }) {
                                             className: "flex items-center gap-3",
                                             children: [
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                    className: "text-xs font-display opacity-40 w-28 shrink-0 capitalize",
+                                                    className: "text-xs font-display w-28 shrink-0 capitalize",
+                                                    style: {
+                                                        color: "var(--text-secondary)"
+                                                    },
                                                     children: stat.replace(/([A-Z])/g, " $1").toLowerCase()
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 138,
+                                                    lineNumber: 162,
                                                     columnNumber: 25
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -328,12 +455,12 @@ function AlgorithmBreakdown({ mmr }) {
                                                         }
                                                     }, void 0, false, {
                                                         fileName: "[project]/components/mmr/breakdown.tsx",
-                                                        lineNumber: 145,
+                                                        lineNumber: 172,
                                                         columnNumber: 27
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 141,
+                                                    lineNumber: 168,
                                                     columnNumber: 25
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -348,49 +475,61 @@ function AlgorithmBreakdown({ mmr }) {
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                                    lineNumber: 154,
+                                                    lineNumber: 181,
                                                     columnNumber: 25
                                                 }, this)
                                             ]
                                         }, stat, true, {
                                             fileName: "[project]/components/mmr/breakdown.tsx",
-                                            lineNumber: 137,
+                                            lineNumber: 161,
                                             columnNumber: 23
                                         }, this);
                                     })
                                 }, void 0, false, {
                                     fileName: "[project]/components/mmr/breakdown.tsx",
-                                    lineNumber: 132,
+                                    lineNumber: 156,
                                     columnNumber: 17
+                                }, this),
+                                hasQPCaveat && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "text-xs font-display mt-2",
+                                    style: {
+                                        color: "var(--text-tertiary)"
+                                    },
+                                    children: "Quickplay performance compared against competitive peer baselines — interpret with caution."
+                                }, void 0, false, {
+                                    fileName: "[project]/components/mmr/breakdown.tsx",
+                                    lineNumber: 197,
+                                    columnNumber: 19
                                 }, this)
                             ]
                         }, role, true, {
                             fileName: "[project]/components/mmr/breakdown.tsx",
-                            lineNumber: 73,
+                            lineNumber: 77,
                             columnNumber: 15
                         }, this);
                     }),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-xs opacity-30 font-display pt-2",
+                        className: "text-xs font-display pt-2",
                         style: {
-                            borderTop: "1px solid var(--border-subtle)"
+                            borderTop: "1px solid var(--border-subtle)",
+                            color: "var(--text-disabled)"
                         },
                         children: "Peer baselines are seeded from community data and updated monthly. Estimates are not official Blizzard data."
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/breakdown.tsx",
-                        lineNumber: 171,
+                        lineNumber: 208,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/mmr/breakdown.tsx",
-                lineNumber: 56,
+                lineNumber: 57,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/mmr/breakdown.tsx",
-        lineNumber: 16,
+        lineNumber: 17,
         columnNumber: 5
     }, this);
 }

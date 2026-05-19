@@ -1,37 +1,20 @@
-import type {
-  RoleMMRResult,
-  Role,
-  Gamemode,
-  CompetitiveDivision,
-} from "@/lib/algorithm/types";
-import { rankColor, roleColor, roleLabel, confidenceLabel, divisionLabel } from "@/lib/rank-utils";
+import type { RoleMMRResult, Role, Gamemode } from "@/lib/algorithm/types";
+import {
+  rankColor,
+  roleColor,
+  roleLabel,
+  confidenceLabel,
+  divisionLabel,
+  tierDelta,
+} from "@/lib/rank-utils";
+import { RankTile } from "@/components/mmr/rank-tile";
+import { ArrowUp, ArrowDown, Minus, Sparkles } from "lucide-react";
 
 interface RoleCardProps {
   role: Role;
   result: RoleMMRResult;
   gamemode: Gamemode;
   showPlatformChip: boolean;
-}
-
-function compareDivisionTier(
-  a: { division: CompetitiveDivision; tier: number },
-  b: { division: CompetitiveDivision; tier: number }
-): number {
-  const order: CompetitiveDivision[] = [
-    "bronze",
-    "silver",
-    "gold",
-    "platinum",
-    "diamond",
-    "master",
-    "grandmaster",
-    "ultimate",
-  ];
-  const ai = order.indexOf(a.division);
-  const bi = order.indexOf(b.division);
-  if (ai !== bi) return ai - bi;
-  // tier 1 is highest, tier 5 is lowest
-  return b.tier - a.tier;
 }
 
 export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardProps) {
@@ -44,6 +27,7 @@ export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardP
         : gamemode === "both"
         ? "No data this season"
         : "Not ranked this season";
+
     return (
       <div
         className="rounded-lg p-5 flex flex-col gap-2"
@@ -55,249 +39,244 @@ export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardP
         <p className="text-xs font-display tracking-widest uppercase" style={{ color: rColor }}>
           {roleLabel(role)}
         </p>
-        <p
-          className="text-2xl font-display font-bold"
-          style={{ color: "var(--text-tertiary)" }}
-        >
+        <p className="text-2xl font-display font-bold" style={{ color: "var(--text-tertiary)" }}>
           —
         </p>
-        <p
-          className="text-xs font-display"
-          style={{ color: "var(--text-secondary)" }}
-        >
+        <p className="text-xs font-display" style={{ color: "var(--text-secondary)" }}>
           {reason}
         </p>
       </div>
     );
   }
 
-  // For ranked + insufficient_games and ranked statuses we share most structure
-  const dLabel = result.division ? `${divisionLabel(result.division)} ${result.tier}` : "";
-  const divColor = result.division ? rankColor(result.division) : "var(--text-primary)";
   const hasActualRank = !!result.division && result.tier != null;
   const sysRank = result.systemRank;
+  const dLabel = hasActualRank
+    ? `${divisionLabel(result.division!)} ${result.tier}`
+    : "";
+  const divColor = hasActualRank ? rankColor(result.division!) : "var(--text-tertiary)";
 
-  // System vs Actual comparison
-  let comparison: { arrow: "↑" | "↓" | "="; color: string } | null = null;
-  if (hasActualRank && sysRank) {
-    const cmp = compareDivisionTier(
+  // Tier delta for arrow
+  let diff: number | null = null;
+  if (hasActualRank && sysRank && result.status !== "insufficient_games") {
+    diff = tierDelta(
       { division: sysRank.division, tier: sysRank.tier },
       { division: result.division!, tier: result.tier! }
     );
-    if (cmp > 0) comparison = { arrow: "↑", color: rColor };
-    else if (cmp < 0) comparison = { arrow: "↓", color: "var(--orange-accent)" };
-    else comparison = { arrow: "=", color: "var(--text-tertiary)" };
   }
 
-  if (result.status === "insufficient_games") {
-    return (
-      <div
-        className="rounded-lg p-5 flex flex-col gap-2"
-        style={{
-          background: "var(--surface-2)",
-          border: `1px solid ${rColor}22`,
-        }}
-      >
-        <RoleHeader
-          role={role}
-          rColor={rColor}
-          resolvedPlatform={result.resolvedPlatform}
-          showPlatformChip={showPlatformChip}
-        />
-        {result.rankIcon && (
-          <img src={result.rankIcon} alt={dLabel} className="w-12 h-12 opacity-80" />
-        )}
-        {hasActualRank ? (
-          <p
-            className="text-xs font-display tracking-wide"
-            style={{ color: divColor }}
-          >
-            {dLabel}
-          </p>
-        ) : sysRank ? (
-          <p
-            className="text-xs font-display tracking-wide"
-            style={{ color: rankColor(sysRank.division) }}
-          >
-            System: {sysRank.label}
-          </p>
-        ) : null}
-        <p
-          className="text-lg font-display font-bold"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          {result.mmr.toLocaleString()}
-        </p>
-        <p
-          className="text-xs font-display"
-          style={{ color: "var(--orange-accent)" }}
-        >
-          Rank-only estimate · Too few games
-        </p>
-      </div>
-    );
-  }
-
-  // status === "ranked"
-  const conf = confidenceLabel(result.confidence);
   const modifierPositive = (result.modifier ?? 0) > 0;
   const modifierZero = (result.modifier ?? 0) === 0;
-
-  const baselineCopy =
-    result.source === "unranked"
-      ? "Inferred from quickplay — no Blizzard rank"
-      : result.source === "blended"
-      ? "vs rank baseline · blended QP+Comp"
-      : "vs rank baseline";
+  const conf = result.status === "ranked" ? confidenceLabel(result.confidence) : null;
 
   return (
     <div
-      className="rounded-lg p-5 flex flex-col gap-3 transition-all duration-200"
+      className="rounded-lg p-5 flex flex-col gap-4 transition-all duration-200"
       style={{
         background: "var(--surface-2)",
-        border: `1px solid ${rColor}33`,
-        boxShadow: `0 0 20px ${rColor}0a`,
+        border: `1px solid color-mix(in srgb, ${rColor} 20%, transparent)`,
+        boxShadow: `0 0 20px color-mix(in srgb, ${rColor} 5%, transparent)`,
       }}
     >
-      <RoleHeader
-        role={role}
-        rColor={rColor}
-        resolvedPlatform={result.resolvedPlatform}
-        showPlatformChip={showPlatformChip}
-      />
-
-      {/* Rank icon + label(s) */}
-      <div className="flex items-center gap-3">
-        {result.rankIcon && (
-          <img src={result.rankIcon} alt={dLabel} className="w-10 h-10 shrink-0" />
-        )}
-        <div className="flex flex-col">
-          {hasActualRank && (
-            <p
-              className="text-sm font-display font-semibold tracking-wide"
-              style={{ color: divColor }}
+      {/* Region A — Header */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-xs font-display tracking-widest uppercase" style={{ color: rColor }}>
+            {roleLabel(role)}
+          </p>
+          {showPlatformChip && result.resolvedPlatform && (
+            <span
+              className="text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5 rounded"
+              style={{
+                background: "rgba(0,212,255,0.08)",
+                color: "var(--cyan-accent)",
+                border: "1px solid rgba(0,212,255,0.2)",
+              }}
             >
-              {dLabel}
-            </p>
+              {result.resolvedPlatform.toUpperCase()}
+            </span>
           )}
-          {sysRank && (
-            <p
-              className="text-xs font-display tracking-wide flex items-center gap-1"
-              style={{ color: hasActualRank ? "var(--text-secondary)" : rankColor(sysRank.division) }}
+        </div>
+        {result.reason === "potential_smurf" && (
+          <div className="flex items-center gap-1 shrink-0">
+            <Sparkles style={{ width: 10, height: 10, color: "var(--orange-accent)" }} />
+            <span
+              className="text-[10px] font-display tracking-widest uppercase"
+              style={{ color: "var(--orange-accent)" }}
             >
-              {hasActualRank ? "System: " : ""}
-              <span style={{ color: rankColor(sysRank.division), fontWeight: 600 }}>
+              SMURF?
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Region B — Twin chips */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+        {/* Your Rank */}
+        <div className="flex flex-col items-center gap-1">
+          <span
+            className="text-[10px] font-display tracking-widest uppercase"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            Your Rank
+          </span>
+          {hasActualRank && result.rankIcon ? (
+            <img
+              src={result.rankIcon}
+              alt={dLabel}
+              className="w-14 h-14"
+              style={{ opacity: result.status === "insufficient_games" ? 0.6 : 1 }}
+            />
+          ) : hasActualRank ? (
+            <div
+              className="w-14 h-14 rounded flex items-center justify-center"
+              style={{
+                background: "var(--surface-3)",
+                border: `1px solid color-mix(in srgb, ${divColor} 30%, transparent)`,
+                opacity: result.status === "insufficient_games" ? 0.6 : 1,
+              }}
+            >
+              <span className="font-display font-black text-xl" style={{ color: divColor }}>
+                {result.tier}
+              </span>
+            </div>
+          ) : (
+            <div
+              className="w-14 h-14 rounded flex items-center justify-center"
+              style={{ background: "var(--surface-3)" }}
+            >
+              <span className="font-display font-black text-xl" style={{ color: "var(--text-tertiary)" }}>
+                —
+              </span>
+            </div>
+          )}
+          <span
+            className="text-[11px] font-display font-semibold text-center"
+            style={{ color: hasActualRank ? divColor : "var(--text-tertiary)" }}
+          >
+            {hasActualRank ? dLabel : "—"}
+          </span>
+        </div>
+
+        {/* Delta arrow */}
+        <div className="flex flex-col items-center gap-0.5">
+          {diff === null || diff === 0 ? (
+            <Minus
+              style={{ width: 28, height: 28, color: "var(--text-tertiary)" }}
+              strokeWidth={2.5}
+            />
+          ) : diff > 0 ? (
+            <>
+              <ArrowUp
+                style={{ width: 28, height: 28, color: "var(--cyan-accent)" }}
+                strokeWidth={2.5}
+              />
+              <span className="font-mono text-xs font-bold" style={{ color: "var(--cyan-accent)" }}>
+                +{diff}
+              </span>
+            </>
+          ) : (
+            <>
+              <ArrowDown
+                style={{
+                  width: 28,
+                  height: 28,
+                  color: "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)",
+                }}
+                strokeWidth={2.5}
+              />
+              <span
+                className="font-mono text-xs font-bold"
+                style={{ color: "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)" }}
+              >
+                {diff}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* System Rank */}
+        <div className="flex flex-col items-center gap-1">
+          <span
+            className="text-[10px] font-display tracking-widest uppercase"
+            style={{ color: "var(--cyan-accent)" }}
+          >
+            System Rank
+          </span>
+          {sysRank ? (
+            <>
+              <RankTile rank={sysRank} size={56} showModelIcon />
+              <span
+                className="text-[11px] font-display font-semibold text-center"
+                style={{ color: rankColor(sysRank.division) }}
+              >
                 {sysRank.label}
               </span>
-              {comparison && (
-                <span
-                  className="ml-0.5 font-bold"
-                  style={{ color: comparison.color }}
-                  aria-label={
-                    comparison.arrow === "↑"
-                      ? "Overperforming"
-                      : comparison.arrow === "↓"
-                      ? "Underperforming"
-                      : "Matches rank"
-                  }
-                >
-                  {comparison.arrow}
+            </>
+          ) : (
+            <>
+              <div
+                className="w-14 h-14 rounded flex items-center justify-center"
+                style={{ background: "var(--surface-3)" }}
+              >
+                <span className="font-display font-black text-xl" style={{ color: "var(--text-tertiary)" }}>
+                  ?
                 </span>
-              )}
-            </p>
+              </div>
+              <em className="text-[11px] font-display" style={{ color: "var(--text-tertiary)" }}>
+                no inferred rank
+              </em>
+            </>
           )}
         </div>
       </div>
 
-      {/* MMR number */}
-      <div>
-        <p
-          className="text-4xl font-display font-black leading-none"
-          style={{ letterSpacing: "-0.02em", color: "var(--text-primary)" }}
-        >
-          {result.mmr.toLocaleString()}
-        </p>
-        {/* Modifier */}
-        <p
-          className="text-sm font-display mt-1 font-semibold"
-          style={{
-            color: modifierZero
-              ? "var(--text-tertiary)"
-              : modifierPositive
-              ? "var(--role-support)"
-              : "var(--role-damage)",
-          }}
-        >
-          {modifierZero ? "±0" : modifierPositive ? `+${result.modifier}` : result.modifier}
-          <span
-            className="text-xs font-normal ml-1"
-            style={{ color: "var(--text-tertiary)" }}
-          >
-            {baselineCopy}
+      {/* Region C — Details row (always visible, muted) */}
+      <div
+        className="flex items-center justify-between gap-2 pt-3"
+        style={{ borderTop: "1px solid var(--border-subtle)" }}
+      >
+        {result.status === "insufficient_games" ? (
+          <span className="font-mono text-xs" style={{ color: "var(--text-tertiary)" }}>
+            Not enough games — showing rank only
           </span>
-        </p>
-      </div>
-
-      {/* Confidence + smurf flag */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span
-          className="text-xs font-display tracking-wide px-2 py-0.5 rounded"
-          style={{
-            background: `${conf.color}40`,
-            color: conf.color,
-            border: `1px solid ${conf.color}55`,
-          }}
-        >
-          {conf.label}
-        </span>
-        {result.reason === "potential_smurf" && (
-          <span
-            className="text-xs font-display tracking-wide px-2 py-0.5 rounded"
-            style={{
-              background: "rgba(255,124,42,0.15)",
-              color: "var(--orange-accent)",
-              border: "1px solid rgba(255,124,42,0.35)",
-            }}
-          >
-            ⚠ New / smurf?
-          </span>
+        ) : (
+          <>
+            <span className="font-mono text-xs shrink-0" style={{ color: "var(--text-tertiary)" }}>
+              MMR {result.mmr.toLocaleString()}
+            </span>
+            <span
+              className="font-mono text-xs font-bold px-1.5 py-0.5 rounded shrink-0"
+              style={{
+                color: modifierZero
+                  ? "var(--text-tertiary)"
+                  : modifierPositive
+                  ? "var(--role-support)"
+                  : "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)",
+                background: modifierZero
+                  ? "transparent"
+                  : modifierPositive
+                  ? "rgba(91,245,160,0.1)"
+                  : "rgba(245,91,91,0.08)",
+              }}
+            >
+              {modifierZero ? "±0" : modifierPositive ? `+${result.modifier}` : result.modifier}
+            </span>
+            {conf && (
+              <span
+                className="text-xs font-display tracking-wide px-2 py-0.5 rounded"
+                style={{
+                  background: `color-mix(in srgb, ${conf.color} 15%, transparent)`,
+                  color: conf.color,
+                  border: `1px solid color-mix(in srgb, ${conf.color} 35%, transparent)`,
+                }}
+              >
+                {conf.label}
+              </span>
+            )}
+          </>
         )}
       </div>
-    </div>
-  );
-}
-
-function RoleHeader({
-  role,
-  rColor,
-  resolvedPlatform,
-  showPlatformChip,
-}: {
-  role: Role;
-  rColor: string;
-  resolvedPlatform?: "pc" | "console";
-  showPlatformChip: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <p
-        className="text-xs font-display tracking-widest uppercase"
-        style={{ color: rColor }}
-      >
-        {roleLabel(role)}
-      </p>
-      {showPlatformChip && resolvedPlatform && (
-        <span
-          className="text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5 rounded"
-          style={{
-            background: "rgba(0,212,255,0.08)",
-            color: "var(--cyan-accent)",
-            border: "1px solid rgba(0,212,255,0.2)",
-          }}
-        >
-          · {resolvedPlatform.toUpperCase()}
-        </span>
-      )}
     </div>
   );
 }

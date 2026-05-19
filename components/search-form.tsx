@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 const BATTLETAG_REGEX = /^[\p{L}\d]{2,12}[#-]\d{4,8}$/u;
 const RECENT_KEY = "owmmr:recent";
 const PLATFORM_KEY = "owmmr:platform";
+const GAMEMODE_KEY = "owmmr:gamemode";
 const MAX_RECENT = 5;
 
-type Platform = "pc" | "console";
+type Platform = "pc" | "console" | "mixed";
+type Gamemode = "ranked" | "unranked" | "both";
 
 interface RecentSearch {
   tag: string;
   platform: Platform;
+  gamemode: Gamemode;
   ts: number;
 }
 
@@ -24,9 +27,9 @@ function loadRecent(): RecentSearch[] {
   }
 }
 
-function saveRecent(tag: string, platform: Platform) {
+function saveRecent(tag: string, platform: Platform, gamemode: Gamemode) {
   const items = loadRecent().filter((r) => r.tag !== tag);
-  items.unshift({ tag, platform, ts: Date.now() });
+  items.unshift({ tag, platform, gamemode, ts: Date.now() });
   localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, MAX_RECENT)));
 }
 
@@ -34,17 +37,27 @@ function tagToUrl(tag: string): string {
   return tag.replace("#", "-");
 }
 
+const PLATFORM_LABELS: Record<Platform, string> = { pc: "PC", console: "CONSOLE", mixed: "MIXED" };
+const GAMEMODE_LABELS: Record<Gamemode, string> = { ranked: "RANKED", unranked: "UNRANKED", both: "BOTH" };
+
 export function SearchForm() {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [platform, setPlatform] = useState<Platform>("pc");
+  const [gamemode, setGamemode] = useState<Gamemode>("ranked");
   const [error, setError] = useState("");
   const [recent, setRecent] = useState<RecentSearch[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(PLATFORM_KEY) as Platform | null;
-    if (saved === "pc" || saved === "console") setPlatform(saved);
+    const savedPlatform = localStorage.getItem(PLATFORM_KEY) as Platform | null;
+    if (savedPlatform === "pc" || savedPlatform === "console" || savedPlatform === "mixed") {
+      setPlatform(savedPlatform);
+    }
+    const savedGamemode = localStorage.getItem(GAMEMODE_KEY) as Gamemode | null;
+    if (savedGamemode === "ranked" || savedGamemode === "unranked" || savedGamemode === "both") {
+      setGamemode(savedGamemode);
+    }
     setRecent(loadRecent());
     inputRef.current?.focus();
   }, []);
@@ -52,6 +65,11 @@ export function SearchForm() {
   function handlePlatformChange(p: Platform) {
     setPlatform(p);
     localStorage.setItem(PLATFORM_KEY, p);
+  }
+
+  function handleGamemodeChange(g: Gamemode) {
+    setGamemode(g);
+    localStorage.setItem(GAMEMODE_KEY, g);
   }
 
   function handleSubmit(e: FormEvent) {
@@ -62,13 +80,17 @@ export function SearchForm() {
       return;
     }
     setError("");
-    saveRecent(trimmed, platform);
+    saveRecent(trimmed, platform, gamemode);
     setRecent(loadRecent());
-    router.push(`/player/${tagToUrl(trimmed)}?platform=${platform}`);
+    router.push(`/player/${tagToUrl(trimmed)}?platform=${platform}&gamemode=${gamemode}`);
   }
 
   function handleRecentClick(item: RecentSearch) {
-    router.push(`/player/${tagToUrl(item.tag)}?platform=${item.platform}`);
+    const gm: Gamemode =
+      item.gamemode === "ranked" || item.gamemode === "unranked" || item.gamemode === "both"
+        ? item.gamemode
+        : "ranked";
+    router.push(`/player/${tagToUrl(item.tag)}?platform=${item.platform}&gamemode=${gm}`);
   }
 
   return (
@@ -135,18 +157,22 @@ export function SearchForm() {
         )}
 
         {/* Platform toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs tracking-widest uppercase opacity-40 font-display mr-1">Platform</span>
-          {(["pc", "console"] as Platform[]).map((p) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="text-xs tracking-widest uppercase font-display mr-1 w-20 shrink-0"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            Platform
+          </span>
+          {(["pc", "console", "mixed"] as Platform[]).map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => handlePlatformChange(p)}
               className="px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150"
               style={{
-                background:
-                  platform === p ? "var(--cyan-accent)" : "var(--surface-2)",
-                color: platform === p ? "var(--surface-0)" : "rgba(255,255,255,0.5)",
+                background: platform === p ? "var(--cyan-accent)" : "var(--surface-2)",
+                color: platform === p ? "var(--surface-0)" : "var(--text-secondary)",
                 border:
                   platform === p
                     ? "1px solid var(--cyan-accent)"
@@ -154,7 +180,36 @@ export function SearchForm() {
                 fontWeight: platform === p ? 700 : 400,
               }}
             >
-              {p === "pc" ? "PC" : "CONSOLE"}
+              {PLATFORM_LABELS[p]}
+            </button>
+          ))}
+        </div>
+
+        {/* Gamemode toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="text-xs tracking-widest uppercase font-display mr-1 w-20 shrink-0"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            Game mode
+          </span>
+          {(["ranked", "unranked", "both"] as Gamemode[]).map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => handleGamemodeChange(g)}
+              className="px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150"
+              style={{
+                background: gamemode === g ? "var(--cyan-accent)" : "var(--surface-2)",
+                color: gamemode === g ? "var(--surface-0)" : "var(--text-secondary)",
+                border:
+                  gamemode === g
+                    ? "1px solid var(--cyan-accent)"
+                    : "1px solid var(--border-subtle)",
+                fontWeight: gamemode === g ? 700 : 400,
+              }}
+            >
+              {GAMEMODE_LABELS[g]}
             </button>
           ))}
         </div>
@@ -164,7 +219,8 @@ export function SearchForm() {
       {recent.length > 0 && (
         <div className="mt-8">
           <p
-            className="text-xs font-display tracking-widest uppercase mb-3 opacity-40"
+            className="text-xs font-display tracking-widest uppercase mb-3"
+            style={{ color: "var(--text-tertiary)" }}
           >
             Recent
           </p>
@@ -176,14 +232,14 @@ export function SearchForm() {
                 className="px-3 py-1.5 rounded text-sm font-display tracking-wide transition-all duration-150 hover:opacity-80"
                 style={{
                   background: "var(--surface-2)",
-                  color: "rgba(255,255,255,0.7)",
+                  color: "var(--text-secondary)",
                   border: "1px solid var(--border-subtle)",
                 }}
               >
                 {item.tag}
                 <span
-                  className="ml-2 text-xs opacity-40"
-                  style={{ color: "var(--cyan-accent)" }}
+                  className="ml-2 text-xs"
+                  style={{ color: "var(--cyan-accent)", opacity: 0.7 }}
                 >
                   {item.platform.toUpperCase()}
                 </span>

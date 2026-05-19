@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { MMREstimate, Role } from "@/lib/algorithm/types";
+import type { MMREstimate, Role, Gamemode } from "@/lib/algorithm/types";
 import { roleLabel, roleColor } from "@/lib/rank-utils";
 
 interface BreakdownProps {
   mmr: MMREstimate;
+  gamemode: Gamemode;
 }
 
 const ZSCORE_LABELS: Record<string, string> = {
@@ -41,7 +42,7 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
           <span
             className="text-xs font-display px-2 py-0.5 rounded"
             style={{
-              background: "rgba(0,212,255,0.1)",
+              background: "rgba(0,212,255,0.18)",
               color: "var(--cyan-accent)",
               border: "1px solid rgba(0,212,255,0.2)",
             }}
@@ -64,8 +65,8 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
       {open && (
         <div className="px-5 pb-5 space-y-6" style={{ background: "var(--surface-1)" }}>
           <div
-            className="pt-4 pb-2 text-xs font-display tracking-wide opacity-50"
-            style={{ borderTop: "1px solid var(--border-subtle)" }}
+            className="pt-4 pb-2 text-xs font-display tracking-wide"
+            style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}
           >
             Z-scores measure how far your stats deviate from average peers at your rank. The modifier
             applies log-scaled dampening based on games played.
@@ -77,6 +78,9 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
 
             const bd = result.breakdown;
             const rColor = roleColor(role);
+            const hasQPCaveat = result.source !== "ranked";
+            const showSampleSizes =
+              result.competitiveGames !== undefined || result.quickplayGames !== undefined;
 
             return (
               <div key={role}>
@@ -87,9 +91,24 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                   {roleLabel(role)}
                 </p>
 
+                {/* Sample sizes (blended mode) */}
+                {showSampleSizes && (
+                  <p
+                    className="text-xs font-display mb-2"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    {result.competitiveGames !== undefined && `Comp: ${result.competitiveGames}g`}
+                    {result.competitiveGames !== undefined && result.quickplayGames !== undefined && " · "}
+                    {result.quickplayGames !== undefined && `QP: ${result.quickplayGames}g`}
+                  </p>
+                )}
+
                 {/* Sample weight progress bar */}
                 <div className="mb-3">
-                  <div className="flex justify-between text-xs font-display opacity-50 mb-1">
+                  <div
+                    className="flex justify-between text-xs font-display mb-1"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
                     <span>Sample confidence</span>
                     <span>{Math.round(bd.sampleWeight * 100)}%</span>
                   </div>
@@ -119,13 +138,18 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                       className="rounded p-2 text-center"
                       style={{ background: "var(--surface-2)" }}
                     >
-                      <p className="text-xs font-display opacity-40 mb-1">{label}</p>
+                      <p
+                        className="text-xs font-display mb-1"
+                        style={{ color: "var(--text-secondary)" }}
+                      >
+                        {label}
+                      </p>
                       <p
                         className="text-base font-display font-bold"
                         style={{
                           color:
                             value === 0
-                              ? "rgba(255,255,255,0.3)"
+                              ? "var(--text-tertiary)"
                               : value > 0
                               ? "var(--role-support)"
                               : "var(--role-damage)",
@@ -144,8 +168,11 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                     const isPositive = z >= 0;
                     return (
                       <div key={stat} className="flex items-center gap-3">
-                        <span className="text-xs font-display opacity-40 w-28 shrink-0 capitalize">
-                          {ZSCORE_LABELS[stat] ?? stat.replace(/([A-Z])/g, " $1").trim()}
+                        <span
+                          className="text-xs font-display w-28 shrink-0 capitalize"
+                          style={{ color: "var(--text-secondary)" }}
+                        >
+                          {ZSCORE_LABELS[stat] ?? stat.replace(/([A-Z])/g, " $1").toLowerCase()}
                         </span>
                         <div
                           className="flex-1 h-1 rounded-full overflow-hidden"
@@ -173,11 +200,24 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                     );
                   })}
                 </div>
+
+                {/* QP/Comp caveat */}
+                {hasQPCaveat && (
+                  <p
+                    className="text-xs font-display mt-2"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    Quickplay performance compared against competitive peer baselines — interpret with caution.
+                  </p>
+                )}
               </div>
             );
           })}
 
-          <p className="text-xs opacity-30 font-display pt-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <p
+            className="text-xs font-display pt-2"
+            style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-disabled)" }}
+          >
             Peer baselines are seeded from community data and updated monthly. Estimates are not
             official Blizzard data.
           </p>

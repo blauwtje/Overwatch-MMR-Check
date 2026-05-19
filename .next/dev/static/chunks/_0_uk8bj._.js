@@ -17,6 +17,7 @@ var _s = __turbopack_context__.k.signature();
 const BATTLETAG_REGEX = /^[\p{L}\d]{2,12}[#-]\d{4,8}$/u;
 const RECENT_KEY = "owmmr:recent";
 const PLATFORM_KEY = "owmmr:platform";
+const GAMEMODE_KEY = "owmmr:gamemode";
 const MAX_RECENT = 5;
 function loadRecent() {
     try {
@@ -25,11 +26,12 @@ function loadRecent() {
         return [];
     }
 }
-function saveRecent(tag, platform) {
+function saveRecent(tag, platform, gamemode) {
     const items = loadRecent().filter((r)=>r.tag !== tag);
     items.unshift({
         tag,
         platform,
+        gamemode,
         ts: Date.now()
     });
     localStorage.setItem(RECENT_KEY, JSON.stringify(items.slice(0, MAX_RECENT)));
@@ -37,18 +39,35 @@ function saveRecent(tag, platform) {
 function tagToUrl(tag) {
     return tag.replace("#", "-");
 }
+const PLATFORM_LABELS = {
+    pc: "PC",
+    console: "CONSOLE",
+    mixed: "MIXED"
+};
+const GAMEMODE_LABELS = {
+    ranked: "RANKED",
+    unranked: "UNRANKED",
+    both: "BOTH"
+};
 function SearchForm() {
     _s();
     const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
     const [input, setInput] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("");
     const [platform, setPlatform] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("pc");
+    const [gamemode, setGamemode] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("ranked");
     const [error, setError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("");
     const [recent, setRecent] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])([]);
     const inputRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "SearchForm.useEffect": ()=>{
-            const saved = localStorage.getItem(PLATFORM_KEY);
-            if (saved === "pc" || saved === "console") setPlatform(saved);
+            const savedPlatform = localStorage.getItem(PLATFORM_KEY);
+            if (savedPlatform === "pc" || savedPlatform === "console" || savedPlatform === "mixed") {
+                setPlatform(savedPlatform);
+            }
+            const savedGamemode = localStorage.getItem(GAMEMODE_KEY);
+            if (savedGamemode === "ranked" || savedGamemode === "unranked" || savedGamemode === "both") {
+                setGamemode(savedGamemode);
+            }
             setRecent(loadRecent());
             inputRef.current?.focus();
         }
@@ -56,6 +75,10 @@ function SearchForm() {
     function handlePlatformChange(p) {
         setPlatform(p);
         localStorage.setItem(PLATFORM_KEY, p);
+    }
+    function handleGamemodeChange(g) {
+        setGamemode(g);
+        localStorage.setItem(GAMEMODE_KEY, g);
     }
     function handleSubmit(e) {
         e.preventDefault();
@@ -65,12 +88,13 @@ function SearchForm() {
             return;
         }
         setError("");
-        saveRecent(trimmed, platform);
+        saveRecent(trimmed, platform, gamemode);
         setRecent(loadRecent());
-        router.push(`/player/${tagToUrl(trimmed)}?platform=${platform}`);
+        router.push(`/player/${tagToUrl(trimmed)}?platform=${platform}&gamemode=${gamemode}`);
     }
     function handleRecentClick(item) {
-        router.push(`/player/${tagToUrl(item.tag)}?platform=${item.platform}`);
+        const gm = item.gamemode === "ranked" || item.gamemode === "unranked" || item.gamemode === "both" ? item.gamemode : "ranked";
+        router.push(`/player/${tagToUrl(item.tag)}?platform=${item.platform}&gamemode=${gm}`);
     }
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "w-full max-w-xl mx-auto",
@@ -90,7 +114,7 @@ function SearchForm() {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/components/search-form.tsx",
-                                lineNumber: 79,
+                                lineNumber: 101,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -104,7 +128,7 @@ function SearchForm() {
                                         children: "//"
                                     }, void 0, false, {
                                         fileName: "[project]/components/search-form.tsx",
-                                        lineNumber: 87,
+                                        lineNumber: 109,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -126,7 +150,7 @@ function SearchForm() {
                                         }
                                     }, void 0, false, {
                                         fileName: "[project]/components/search-form.tsx",
-                                        lineNumber: 93,
+                                        lineNumber: 115,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -142,19 +166,19 @@ function SearchForm() {
                                         children: "SCAN"
                                     }, void 0, false, {
                                         fileName: "[project]/components/search-form.tsx",
-                                        lineNumber: 108,
+                                        lineNumber: 130,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/search-form.tsx",
-                                lineNumber: 86,
+                                lineNumber: 108,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/search-form.tsx",
-                        lineNumber: 78,
+                        lineNumber: 100,
                         columnNumber: 9
                     }, this),
                     error && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -165,60 +189,107 @@ function SearchForm() {
                         children: error
                     }, void 0, false, {
                         fileName: "[project]/components/search-form.tsx",
-                        lineNumber: 129,
+                        lineNumber: 151,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "flex items-center gap-2",
+                        className: "flex items-center gap-2 flex-wrap",
                         children: [
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                className: "text-xs tracking-widest uppercase opacity-40 font-display mr-1",
+                                className: "text-xs tracking-widest uppercase font-display mr-1 w-20 shrink-0",
+                                style: {
+                                    color: "var(--text-tertiary)"
+                                },
                                 children: "Platform"
                             }, void 0, false, {
                                 fileName: "[project]/components/search-form.tsx",
-                                lineNumber: 139,
+                                lineNumber: 161,
                                 columnNumber: 11
                             }, this),
                             [
                                 "pc",
-                                "console"
+                                "console",
+                                "mixed"
                             ].map((p)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                     type: "button",
                                     onClick: ()=>handlePlatformChange(p),
                                     className: "px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150",
                                     style: {
                                         background: platform === p ? "var(--cyan-accent)" : "var(--surface-2)",
-                                        color: platform === p ? "var(--surface-0)" : "rgba(255,255,255,0.5)",
+                                        color: platform === p ? "var(--surface-0)" : "var(--text-secondary)",
                                         border: platform === p ? "1px solid var(--cyan-accent)" : "1px solid var(--border-subtle)",
                                         fontWeight: platform === p ? 700 : 400
                                     },
-                                    children: p === "pc" ? "PC" : "CONSOLE"
+                                    children: PLATFORM_LABELS[p]
                                 }, p, false, {
                                     fileName: "[project]/components/search-form.tsx",
-                                    lineNumber: 141,
+                                    lineNumber: 168,
                                     columnNumber: 13
                                 }, this))
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/search-form.tsx",
-                        lineNumber: 138,
+                        lineNumber: 160,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex items-center gap-2 flex-wrap",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "text-xs tracking-widest uppercase font-display mr-1 w-20 shrink-0",
+                                style: {
+                                    color: "var(--text-tertiary)"
+                                },
+                                children: "Game mode"
+                            }, void 0, false, {
+                                fileName: "[project]/components/search-form.tsx",
+                                lineNumber: 190,
+                                columnNumber: 11
+                            }, this),
+                            [
+                                "ranked",
+                                "unranked",
+                                "both"
+                            ].map((g)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                    type: "button",
+                                    onClick: ()=>handleGamemodeChange(g),
+                                    className: "px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150",
+                                    style: {
+                                        background: gamemode === g ? "var(--cyan-accent)" : "var(--surface-2)",
+                                        color: gamemode === g ? "var(--surface-0)" : "var(--text-secondary)",
+                                        border: gamemode === g ? "1px solid var(--cyan-accent)" : "1px solid var(--border-subtle)",
+                                        fontWeight: gamemode === g ? 700 : 400
+                                    },
+                                    children: GAMEMODE_LABELS[g]
+                                }, g, false, {
+                                    fileName: "[project]/components/search-form.tsx",
+                                    lineNumber: 197,
+                                    columnNumber: 13
+                                }, this))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/components/search-form.tsx",
+                        lineNumber: 189,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/search-form.tsx",
-                lineNumber: 76,
+                lineNumber: 98,
                 columnNumber: 7
             }, this),
             recent.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "mt-8",
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-xs font-display tracking-widest uppercase mb-3 opacity-40",
+                        className: "text-xs font-display tracking-widest uppercase mb-3",
+                        style: {
+                            color: "var(--text-tertiary)"
+                        },
                         children: "Recent"
                     }, void 0, false, {
                         fileName: "[project]/components/search-form.tsx",
-                        lineNumber: 166,
+                        lineNumber: 221,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -228,47 +299,48 @@ function SearchForm() {
                                 className: "px-3 py-1.5 rounded text-sm font-display tracking-wide transition-all duration-150 hover:opacity-80",
                                 style: {
                                     background: "var(--surface-2)",
-                                    color: "rgba(255,255,255,0.7)",
+                                    color: "var(--text-secondary)",
                                     border: "1px solid var(--border-subtle)"
                                 },
                                 children: [
                                     item.tag,
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                        className: "ml-2 text-xs opacity-40",
+                                        className: "ml-2 text-xs",
                                         style: {
-                                            color: "var(--cyan-accent)"
+                                            color: "var(--cyan-accent)",
+                                            opacity: 0.7
                                         },
                                         children: item.platform.toUpperCase()
                                     }, void 0, false, {
                                         fileName: "[project]/components/search-form.tsx",
-                                        lineNumber: 184,
+                                        lineNumber: 240,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, item.tag + item.platform, true, {
                                 fileName: "[project]/components/search-form.tsx",
-                                lineNumber: 173,
+                                lineNumber: 229,
                                 columnNumber: 15
                             }, this))
                     }, void 0, false, {
                         fileName: "[project]/components/search-form.tsx",
-                        lineNumber: 171,
+                        lineNumber: 227,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/search-form.tsx",
-                lineNumber: 165,
+                lineNumber: 220,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/search-form.tsx",
-        lineNumber: 75,
+        lineNumber: 97,
         columnNumber: 5
     }, this);
 }
-_s(SearchForm, "kCg2h1BfpVMsYKMUfU7bD870BZQ=", false, function() {
+_s(SearchForm, "wSAta84EdW8VEcBwv34q/XQnMz0=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"]
     ];

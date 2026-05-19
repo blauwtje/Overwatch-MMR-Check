@@ -126,38 +126,50 @@ async function getPlayerStats(playerId, params = {}) {
 "use strict";
 
 __turbopack_context__.s([
-    "transformPlayerData",
-    ()=>transformPlayerData
+    "extractCompetitive",
+    ()=>extractCompetitive,
+    "extractRoleStats",
+    ()=>extractRoleStats,
+    "extractSeason",
+    ()=>extractSeason,
+    "isPrivateSummary",
+    ()=>isPrivateSummary
 ]);
 const ROLES = [
     "tank",
     "damage",
     "support"
 ];
-function transformPlayerData(summary, stats, platform) {
+function isPrivateSummary(summary) {
+    return !summary.competitive;
+}
+function extractCompetitive(summary, platform) {
     const platformRanks = summary.competitive?.[platform];
-    const competitive = {};
+    const result = {};
     for (const role of ROLES){
         const rank = platformRanks?.[role];
         if (rank) {
-            competitive[role] = {
+            result[role] = {
                 division: rank.division,
                 tier: rank.tier,
                 rank_icon: rank.rank_icon
             };
         } else {
-            competitive[role] = null;
+            result[role] = null;
         }
     }
+    return result;
+}
+function extractRoleStats(stats) {
+    const result = {};
     const statsRoles = stats?.roles;
-    const playerStats = {};
     for (const role of ROLES){
         const rs = statsRoles?.[role];
         if (!rs) {
-            playerStats[role] = null;
+            result[role] = null;
             continue;
         }
-        playerStats[role] = {
+        result[role] = {
             games_played: rs.games_played,
             games_won: rs.games_won,
             winrate: rs.winrate,
@@ -176,15 +188,10 @@ function transformPlayerData(summary, stats, platform) {
             }
         };
     }
-    return {
-        username: summary.username,
-        avatar: summary.avatar ?? null,
-        platform,
-        isPrivate: !summary.competitive,
-        competitive,
-        stats: playerStats,
-        season: platformRanks?.season ?? null
-    };
+    return result;
+}
+function extractSeason(summary, platform) {
+    return summary.competitive?.[platform]?.season ?? null;
 }
 }),
 "[project]/lib/algorithm/rank-mapping.ts [app-rsc] (ecmascript)", ((__turbopack_context__) => {
@@ -193,6 +200,8 @@ function transformPlayerData(summary, stats, platform) {
 __turbopack_context__.s([
     "mmrToLabel",
     ()=>mmrToLabel,
+    "mmrToRank",
+    ()=>mmrToRank,
     "rankToMMR",
     ()=>rankToMMR
 ]);
@@ -211,16 +220,69 @@ function rankToMMR(division, tier) {
     const tierBonus = (5 - tier) * 100; // tier 1 → 400, tier 5 → 0
     return base + tierBonus;
 }
+const DIVISION_RANGES = [
+    {
+        division: "ultimate",
+        floor: 4500
+    },
+    {
+        division: "grandmaster",
+        floor: 4000
+    },
+    {
+        division: "master",
+        floor: 3500
+    },
+    {
+        division: "diamond",
+        floor: 3000
+    },
+    {
+        division: "platinum",
+        floor: 2500
+    },
+    {
+        division: "gold",
+        floor: 2000
+    },
+    {
+        division: "silver",
+        floor: 1500
+    },
+    {
+        division: "bronze",
+        floor: 0
+    }
+];
+function divisionLabel(division) {
+    return division.charAt(0).toUpperCase() + division.slice(1);
+}
+function mmrToRank(mmr) {
+    if (mmr >= 4900) {
+        return {
+            division: "ultimate",
+            tier: 1,
+            label: "Top 500"
+        };
+    }
+    if (mmr >= 4500) {
+        return {
+            division: "ultimate",
+            tier: 1,
+            label: "Champion"
+        };
+    }
+    const range = DIVISION_RANGES.find((r)=>mmr >= r.floor) ?? DIVISION_RANGES[DIVISION_RANGES.length - 1];
+    // tier 5 = lowest, tier 1 = highest within division
+    const tier = Math.max(1, Math.min(5, 5 - Math.floor((mmr - range.floor) / 100)));
+    return {
+        division: range.division,
+        tier,
+        label: `${divisionLabel(range.division)} ${tier}`
+    };
+}
 function mmrToLabel(mmr) {
-    if (mmr >= 4900) return "Top 500";
-    if (mmr >= 4500) return "Champion";
-    if (mmr >= 4000) return `Grandmaster ${5 - Math.floor((mmr - 4000) / 100)}`;
-    if (mmr >= 3500) return `Master ${5 - Math.floor((mmr - 3500) / 100)}`;
-    if (mmr >= 3000) return `Diamond ${5 - Math.floor((mmr - 3000) / 100)}`;
-    if (mmr >= 2500) return `Platinum ${5 - Math.floor((mmr - 2500) / 100)}`;
-    if (mmr >= 2000) return `Gold ${5 - Math.floor((mmr - 2000) / 100)}`;
-    if (mmr >= 1500) return `Silver ${5 - Math.floor((mmr - 1500) / 100)}`;
-    return `Bronze ${5 - Math.floor((mmr - 1000) / 100)}`;
+    return mmrToRank(mmr).label;
 }
 }),
 "[project]/lib/algorithm/peer-baselines.ts [app-rsc] (ecmascript)", ((__turbopack_context__) => {
@@ -837,7 +899,14 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$weights$
 ;
 ;
 ;
-const ALGORITHM_VERSION = "1.0.0";
+const ALGORITHM_VERSION = "1.1.0";
+const ROLES = [
+    "tank",
+    "damage",
+    "support"
+];
+const UNRANKED_REFERENCE_DIVISION = "platinum";
+const UNRANKED_MMR_SPAN = 1500; // 10× the ranked coefficient
 function zscore(value, mean, stddev) {
     if (stddev === 0) return 0;
     return (value - mean) / stddev;
@@ -849,8 +918,48 @@ function clamp(value, min, max) {
 function sampleSizeWeight(gamesPlayed) {
     return clamp(Math.log10(gamesPlayed + 1) / Math.log10(200), 0, 1);
 }
-function computeRoleMMR(role, platform, division, tier, stats, rankIcon) {
-    const baseMMR = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankToMMR"])(division, tier);
+function confidenceFor(sampleWeight) {
+    return sampleWeight > 0.7 ? "high" : sampleWeight > 0.4 ? "medium" : "low";
+}
+/** Weighted blend of two stat samples by games_played. */ function blendStats(comp, qp) {
+    if (!comp && !qp) return null;
+    if (!qp) return comp ?? null;
+    if (!comp) return qp;
+    const total = comp.games_played + qp.games_played;
+    if (total === 0) return comp;
+    const cw = comp.games_played / total;
+    const qw = qp.games_played / total;
+    return {
+        games_played: total,
+        games_won: comp.games_won + qp.games_won,
+        winrate: comp.winrate * cw + qp.winrate * qw,
+        kda: comp.kda * cw + qp.kda * qw,
+        average: {
+            deaths: comp.average.deaths * cw + qp.average.deaths * qw,
+            damage: comp.average.damage * cw + qp.average.damage * qw,
+            healing: comp.average.healing * cw + qp.average.healing * qw
+        },
+        total: {
+            eliminations: comp.total.eliminations + qp.total.eliminations,
+            assists: comp.total.assists + qp.total.assists,
+            deaths: comp.total.deaths + qp.total.deaths,
+            damage: comp.total.damage + qp.total.damage,
+            healing: comp.total.healing + qp.total.healing
+        }
+    };
+}
+function computeZScores(platform, role, division, stats) {
+    const peers = __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$peer$2d$baselines$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["PEER_BASELINES"][platform][role][division];
+    return {
+        winrate: zscore(stats.winrate, peers.winrate.mean, peers.winrate.stddev),
+        kda: zscore(stats.kda, peers.kda.mean, peers.kda.stddev),
+        avgDeaths: -zscore(stats.average.deaths, peers.avgDeaths.mean, peers.avgDeaths.stddev),
+        avgDamage: zscore(stats.average.damage, peers.avgDamage.mean, peers.avgDamage.stddev),
+        avgHealing: zscore(stats.average.healing, peers.avgHealing.mean, peers.avgHealing.stddev)
+    };
+}
+/** Ranked path: stats anchored against the player's actual rank. */ function computeRankedRoleMMR(role, platform, competitive, stats, source, sampleSizes) {
+    const baseMMR = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankToMMR"])(competitive.division, competitive.tier);
     if (stats.games_played < 5) {
         return {
             status: "insufficient_games",
@@ -858,41 +967,36 @@ function computeRoleMMR(role, platform, division, tier, stats, rankIcon) {
             baseMMR,
             modifier: 0,
             confidence: "low",
-            division,
-            tier,
-            rankIcon,
+            division: competitive.division,
+            tier: competitive.tier,
+            rankIcon: competitive.rank_icon,
+            source,
+            systemRank: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["mmrToRank"])(baseMMR),
+            ...sampleSizes,
             reason: "insufficient_games"
         };
     }
-    const peers = __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$peer$2d$baselines$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["PEER_BASELINES"][platform][role][division];
+    const zScores = computeZScores(platform, role, competitive.division, stats);
     const weights = __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$weights$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["ROLE_WEIGHTS"][role];
-    // z-scores for each stat (avgDeaths is inverted: lower deaths → positive z)
-    const zScores = {
-        winrate: zscore(stats.winrate, peers.winrate.mean, peers.winrate.stddev),
-        kda: zscore(stats.kda, peers.kda.mean, peers.kda.stddev),
-        avgDeaths: -zscore(stats.average.deaths, peers.avgDeaths.mean, peers.avgDeaths.stddev),
-        avgDamage: zscore(stats.average.damage, peers.avgDamage.mean, peers.avgDamage.stddev),
-        avgHealing: zscore(stats.average.healing, peers.avgHealing.mean, peers.avgHealing.stddev)
-    };
-    // Weighted sum of z-scores → raw performance score (roughly N(0,1) for average peer)
     const rawScore = zScores.winrate * weights.winrate + zScores.kda * weights.kda + zScores.avgDeaths * weights.avgDeaths + zScores.avgDamage * weights.avgDamage + zScores.avgHealing * weights.avgHealing;
-    // ±2σ peer performance → ±300 MMR swing (3 divisions)
     const sampleWeight = sampleSizeWeight(stats.games_played);
     const rawModifier = rawScore * 150 * sampleWeight;
     const modifier = clamp(rawModifier, -300, 300);
     const estimatedMMR = Math.round(baseMMR + modifier);
-    const confidence = sampleWeight > 0.7 ? "high" : sampleWeight > 0.4 ? "medium" : "low";
-    // Flag potential smurf signal (low games, high stats, low rank)
-    const isPotentialSmurf = stats.games_played < 30 && stats.winrate > 65 && (division === "bronze" || division === "silver");
+    const baseConfidence = confidenceFor(sampleWeight);
+    const isPotentialSmurf = stats.games_played < 30 && stats.winrate > 65 && (competitive.division === "bronze" || competitive.division === "silver");
     return {
         status: "ranked",
         mmr: estimatedMMR,
         baseMMR,
         modifier: Math.round(modifier),
-        confidence: isPotentialSmurf ? "low" : confidence,
-        division,
-        tier,
-        rankIcon,
+        confidence: isPotentialSmurf ? "low" : baseConfidence,
+        division: competitive.division,
+        tier: competitive.tier,
+        rankIcon: competitive.rank_icon,
+        systemRank: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["mmrToRank"])(estimatedMMR),
+        source,
+        ...sampleSizes,
         breakdown: {
             winRateMod: Math.round(zScores.winrate * weights.winrate * 150 * sampleWeight),
             kdaMod: Math.round(zScores.kda * weights.kda * 150 * sampleWeight),
@@ -903,30 +1007,93 @@ function computeRoleMMR(role, platform, division, tier, stats, rankIcon) {
         reason: isPotentialSmurf ? "potential_smurf" : undefined
     };
 }
-function estimateMMR(player) {
-    const roles = [
-        "tank",
-        "damage",
-        "support"
-    ];
-    const perRole = {};
-    for (const role of roles){
-        const competitive = player.competitive[role];
-        if (!competitive) {
-            perRole[role] = {
-                status: "unranked",
-                mmr: 0,
-                baseMMR: 0,
-                modifier: 0,
-                confidence: "low"
-            };
-            continue;
+/**
+ * Unranked path: no Blizzard rank to anchor against. Project the raw performance
+ * score against a Platinum baseline across the full ladder. The visible modifier
+ * is the residual against the inferred division's base.
+ */ function computeUnrankedRoleMMR(role, platform, stats, source, sampleSizes) {
+    if (stats.games_played < 5) {
+        return {
+            status: "insufficient_games",
+            mmr: 0,
+            baseMMR: 0,
+            modifier: 0,
+            confidence: "low",
+            source,
+            ...sampleSizes,
+            reason: "insufficient_games"
+        };
+    }
+    const zScores = computeZScores(platform, role, UNRANKED_REFERENCE_DIVISION, stats);
+    const weights = __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$weights$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["ROLE_WEIGHTS"][role];
+    const rawScore = zScores.winrate * weights.winrate + zScores.kda * weights.kda + zScores.avgDeaths * weights.avgDeaths + zScores.avgDamage * weights.avgDamage + zScores.avgHealing * weights.avgHealing;
+    const sampleWeight = sampleSizeWeight(stats.games_played);
+    const platinumAnchor = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankToMMR"])("platinum", 5); // 2500
+    const estimatedMMR = Math.round(clamp(platinumAnchor + rawScore * UNRANKED_MMR_SPAN * sampleWeight, 1000, 4500));
+    const systemRank = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["mmrToRank"])(estimatedMMR);
+    const baseMMR = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankToMMR"])(systemRank.division, systemRank.tier);
+    const modifier = estimatedMMR - baseMMR;
+    return {
+        status: "ranked",
+        mmr: estimatedMMR,
+        baseMMR,
+        modifier,
+        confidence: confidenceFor(sampleWeight),
+        systemRank,
+        source,
+        ...sampleSizes,
+        breakdown: {
+            winRateMod: Math.round(zScores.winrate * weights.winrate * UNRANKED_MMR_SPAN * sampleWeight),
+            kdaMod: Math.round(zScores.kda * weights.kda * UNRANKED_MMR_SPAN * sampleWeight),
+            roleMod: Math.round((zScores.avgDeaths * weights.avgDeaths + zScores.avgDamage * weights.avgDamage + zScores.avgHealing * weights.avgHealing) * UNRANKED_MMR_SPAN * sampleWeight),
+            sampleWeight,
+            zScores
         }
-        const stats = player.stats[role];
-        if (!stats) {
-            // Has rank but no stats (rare — treat like 0 games)
+    };
+}
+/** Sum of games_played relevant to the active gamemode for a role on one platform. */ function relevantGames(data, role, gamemode) {
+    if (!data) return 0;
+    const comp = data.rankedStats[role]?.games_played ?? 0;
+    const qp = data.unrankedStats[role]?.games_played ?? 0;
+    if (gamemode === "ranked") return comp;
+    if (gamemode === "unranked") return qp;
+    return comp + qp;
+}
+/**
+ * For platform=mixed: per role, return the platform with more games of the relevant
+ * gamemode. Tie-breaker: platform where the role has a current competitive rank; else PC.
+ */ function resolveRoleSource(role, byPlatform, gamemode) {
+    const pcGames = relevantGames(byPlatform.pc, role, gamemode);
+    const consoleGames = relevantGames(byPlatform.console, role, gamemode);
+    if (pcGames > consoleGames) return "pc";
+    if (consoleGames > pcGames) return "console";
+    // Tie-breaker: prefer the platform where this role has a current ranked entry.
+    const pcRanked = byPlatform.pc?.competitive?.[role];
+    const consoleRanked = byPlatform.console?.competitive?.[role];
+    if (pcRanked && !consoleRanked) return "pc";
+    if (consoleRanked && !pcRanked) return "console";
+    return "pc";
+}
+function emptyUnrankedResult(source) {
+    return {
+        status: "unranked",
+        mmr: 0,
+        baseMMR: 0,
+        modifier: 0,
+        confidence: "low",
+        source
+    };
+}
+function computeRoleForResolvedPlatform(role, resolvedPlatform, data, gamemode) {
+    if (!data) return emptyUnrankedResult(gamemode === "unranked" ? "unranked" : "ranked");
+    const competitive = data.competitive[role] ?? null;
+    const rankedStats = data.rankedStats[role] ?? null;
+    const unrankedStats = data.unrankedStats[role] ?? null;
+    if (gamemode === "ranked") {
+        if (!competitive) return emptyUnrankedResult("ranked");
+        if (!rankedStats) {
             const baseMMR = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankToMMR"])(competitive.division, competitive.tier);
-            perRole[role] = {
+            return {
                 status: "insufficient_games",
                 mmr: baseMMR,
                 baseMMR,
@@ -935,18 +1102,66 @@ function estimateMMR(player) {
                 division: competitive.division,
                 tier: competitive.tier,
                 rankIcon: competitive.rank_icon,
+                systemRank: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$rank$2d$mapping$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["mmrToRank"])(baseMMR),
+                source: "ranked",
                 reason: "no_stats"
             };
-            continue;
         }
-        perRole[role] = computeRoleMMR(role, player.platform, competitive.division, competitive.tier, stats, competitive.rank_icon);
+        return computeRankedRoleMMR(role, resolvedPlatform, competitive, rankedStats, "ranked", {
+            competitiveGames: rankedStats.games_played
+        });
+    }
+    if (gamemode === "unranked") {
+        if (!unrankedStats) return emptyUnrankedResult("unranked");
+        return computeUnrankedRoleMMR(role, resolvedPlatform, unrankedStats, "unranked", {
+            quickplayGames: unrankedStats.games_played
+        });
+    }
+    // gamemode === "both"
+    const blended = blendStats(rankedStats, unrankedStats);
+    if (!blended) return emptyUnrankedResult("blended");
+    const sampleSizes = {
+        competitiveGames: rankedStats?.games_played ?? 0,
+        quickplayGames: unrankedStats?.games_played ?? 0
+    };
+    if (competitive) {
+        return computeRankedRoleMMR(role, resolvedPlatform, competitive, blended, "blended", sampleSizes);
+    }
+    // No competitive rank — infer from blended stats (effectively QP-only when comp is absent).
+    return computeUnrankedRoleMMR(role, resolvedPlatform, blended, "blended", sampleSizes);
+}
+function estimateMMR(player) {
+    const perRole = {};
+    for (const role of ROLES){
+        let resolvedPlatform;
+        let data;
+        if (player.platform === "mixed") {
+            resolvedPlatform = resolveRoleSource(role, player.byPlatform, player.gamemode);
+            data = player.byPlatform[resolvedPlatform];
+        } else {
+            resolvedPlatform = player.platform;
+            data = player.byPlatform[resolvedPlatform];
+        }
+        const result = computeRoleForResolvedPlatform(role, resolvedPlatform, data, player.gamemode);
+        if (player.platform === "mixed") {
+            result.resolvedPlatform = resolvedPlatform;
+        }
+        perRole[role] = result;
     }
     // Primary MMR: weighted average by games_played, only roles with ≥20 games and "ranked" status
-    const eligible = roles.filter((r)=>perRole[r].status === "ranked" && (player.stats[r]?.games_played ?? 0) >= 20);
+    const eligible = ROLES.filter((r)=>{
+        const res = perRole[r];
+        if (res.status !== "ranked") return false;
+        const games = (res.competitiveGames ?? 0) + (res.quickplayGames ?? 0);
+        return games >= 20;
+    });
     let primary = null;
     if (eligible.length > 0) {
-        const totalGames = eligible.reduce((sum, r)=>sum + (player.stats[r]?.games_played ?? 0), 0);
-        const weightedMMR = eligible.reduce((sum, r)=>sum + perRole[r].mmr * (player.stats[r]?.games_played ?? 0), 0);
+        const totalGames = eligible.reduce((sum, r)=>sum + ((perRole[r].competitiveGames ?? 0) + (perRole[r].quickplayGames ?? 0)), 0);
+        const weightedMMR = eligible.reduce((sum, r)=>{
+            const games = (perRole[r].competitiveGames ?? 0) + (perRole[r].quickplayGames ?? 0);
+            return sum + perRole[r].mmr * games;
+        }, 0);
         const avgMMR = Math.round(weightedMMR / totalGames);
         const allHigh = eligible.every((r)=>perRole[r].confidence === "high");
         const anyLow = eligible.some((r)=>perRole[r].confidence === "low");
@@ -978,13 +1193,51 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$index$2e
 ;
 ;
 ;
-async function fetchPlayerData(tag, platform) {
-    const [summaryResult, statsResult] = await Promise.all([
+const RESOLVED_PLATFORMS_FOR = (platform)=>platform === "mixed" ? [
+        "pc",
+        "console"
+    ] : [
+        platform
+    ];
+const STATS_GAMEMODES_FOR = (gamemode)=>{
+    if (gamemode === "ranked") return [
+        "competitive"
+    ];
+    if (gamemode === "unranked") return [
+        "quickplay"
+    ];
+    return [
+        "competitive",
+        "quickplay"
+    ];
+};
+const ROLES = [
+    "tank",
+    "damage",
+    "support"
+];
+function emptyRoleMap() {
+    return {
+        tank: null,
+        damage: null,
+        support: null
+    };
+}
+async function fetchPlayerData(tag, platform, gamemode = "ranked") {
+    const platformsToFetch = RESOLVED_PLATFORMS_FOR(platform);
+    const gamemodesToFetch = STATS_GAMEMODES_FOR(gamemode);
+    const statsKeys = [];
+    for (const p of platformsToFetch){
+        for (const g of gamemodesToFetch){
+            statsKeys.push({
+                platform: p,
+                gamemode: g
+            });
+        }
+    }
+    const [summaryResult, ...statsResults] = await Promise.all([
         (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$client$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["getPlayerSummary"])(tag),
-        (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$client$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["getPlayerStats"])(tag, {
-            platform,
-            gamemode: "competitive"
-        })
+        ...statsKeys.map((k)=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$client$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["getPlayerStats"])(tag, k))
     ]);
     if (!summaryResult.ok) {
         const err = summaryResult.error;
@@ -999,28 +1252,59 @@ async function fetchPlayerData(tag, platform) {
             message: `Upstream error: ${err.type}`
         };
     }
-    const statsData = statsResult.ok ? statsResult.data : null;
-    const playerData = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["transformPlayerData"])(summaryResult.data, statsData, platform);
-    if (playerData.isPrivate) {
+    const summary = summaryResult.data;
+    if ((0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["isPrivateSummary"])(summary)) {
         return {
             status: "private",
-            username: playerData.username
+            username: summary.username
         };
     }
+    let statsPartial = false;
+    const byPlatform = {};
+    for (const p of platformsToFetch){
+        let rankedStats = emptyRoleMap();
+        let unrankedStats = emptyRoleMap();
+        for(let i = 0; i < statsKeys.length; i++){
+            if (statsKeys[i].platform !== p) continue;
+            const r = statsResults[i];
+            if (!r.ok) {
+                statsPartial = true;
+                continue;
+            }
+            const extracted = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["extractRoleStats"])(r.data);
+            if (statsKeys[i].gamemode === "competitive") rankedStats = extracted;
+            else unrankedStats = extracted;
+        }
+        byPlatform[p] = {
+            competitive: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["extractCompetitive"])(summary, p),
+            rankedStats,
+            unrankedStats
+        };
+    }
+    // For ranked mode in single-platform requests, mark statsPartial only if we actually
+    // wanted comp stats for that platform and the call failed.
+    // (already handled above — statsPartial reflects any failed fetch among the ones we asked for)
     const mmr = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$algorithm$2f$index$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__$3c$locals$3e$__["estimateMMR"])({
-        platform: playerData.platform,
-        competitive: playerData.competitive,
-        stats: playerData.stats
+        platform,
+        gamemode,
+        byPlatform
     });
+    let season = null;
+    if (platform === "mixed") {
+        season = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["extractSeason"])(summary, "pc") ?? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["extractSeason"])(summary, "console");
+    } else {
+        season = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$overfast$2f$transform$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["extractSeason"])(summary, platform);
+    }
+    void ROLES;
     return {
         status: "ok",
-        username: playerData.username,
-        avatar: playerData.avatar,
-        platform: playerData.platform,
-        season: playerData.season,
-        competitive: playerData.competitive,
+        username: summary.username,
+        avatar: summary.avatar ?? null,
+        platform,
+        gamemode,
+        season,
         mmr,
-        statsPartial: !statsResult.ok
+        statsPartial
     };
 }
 }),
@@ -1028,6 +1312,12 @@ async function fetchPlayerData(tag, platform) {
 "use strict";
 
 __turbopack_context__.s([
+    "DIVISION_ORDER",
+    ()=>DIVISION_ORDER,
+    "aggregateTierDelta",
+    ()=>aggregateTierDelta,
+    "compareDivisionTier",
+    ()=>compareDivisionTier,
     "confidenceLabel",
     ()=>confidenceLabel,
     "divisionLabel",
@@ -1037,7 +1327,13 @@ __turbopack_context__.s([
     "roleColor",
     ()=>roleColor,
     "roleLabel",
-    ()=>roleLabel
+    ()=>roleLabel,
+    "tierDelta",
+    ()=>tierDelta,
+    "tierIndex",
+    ()=>tierIndex,
+    "verdictFor",
+    ()=>verdictFor
 ]);
 function rankColor(division) {
     const map = {
@@ -1086,6 +1382,94 @@ function confidenceLabel(confidence) {
 function divisionLabel(division) {
     return division.charAt(0).toUpperCase() + division.slice(1);
 }
+const DIVISION_ORDER = [
+    "bronze",
+    "silver",
+    "gold",
+    "platinum",
+    "diamond",
+    "master",
+    "grandmaster",
+    "ultimate"
+];
+function tierIndex(dt) {
+    const idx = DIVISION_ORDER.indexOf(dt.division);
+    const clamped = Math.max(1, Math.min(5, dt.tier));
+    return idx * 5 + (5 - clamped);
+}
+function tierDelta(system, actual) {
+    return tierIndex(system) - tierIndex(actual);
+}
+function compareDivisionTier(a, b) {
+    return Math.sign(tierIndex(a) - tierIndex(b));
+}
+function aggregateTierDelta(inputs) {
+    const valid = inputs.filter((i)=>i.system && i.actual);
+    if (valid.length === 0) return null;
+    const totalGames = valid.reduce((sum, i)=>sum + i.games, 0);
+    const equalWeight = totalGames === 0;
+    let weightedSum = 0;
+    let totalWeight = 0;
+    for (const input of valid){
+        const delta = tierDelta(input.system, input.actual);
+        const weight = equalWeight ? 1 : input.games;
+        weightedSum += delta * weight;
+        totalWeight += weight;
+    }
+    return Math.round(weightedSum / totalWeight);
+}
+function verdictFor(delta, smurfFlag) {
+    if (smurfFlag) {
+        return {
+            text: "SMURFING DETECTED",
+            color: "var(--orange-accent)",
+            tone: "smurf"
+        };
+    }
+    if (delta === null) {
+        return {
+            text: "MODEL-INFERRED RANK",
+            color: "var(--text-tertiary)",
+            tone: "unknown"
+        };
+    }
+    const muted = "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)";
+    if (delta >= 3) return {
+        text: "PLAYING WAY ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 2) return {
+        text: "PLAYING 2 TIERS ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 1) return {
+        text: "PLAYING 1 TIER ABOVE RANK",
+        color: "var(--cyan-accent)",
+        tone: "above"
+    };
+    if (delta === 0) return {
+        text: "PLAYING AT RANK",
+        color: "var(--text-secondary)",
+        tone: "neutral"
+    };
+    if (delta === -1) return {
+        text: "PLAYING 1 TIER BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
+    if (delta === -2) return {
+        text: "PLAYING 2 TIERS BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
+    return {
+        text: "PLAYING WAY BELOW RANK",
+        color: muted,
+        tone: "below"
+    };
+}
 }),
 "[project]/components/mmr/role-card.tsx [app-rsc] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
@@ -1098,14 +1482,32 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/rank-utils.ts [app-rsc] (ecmascript)");
 ;
 ;
-function RoleCard({ role, result }) {
+function compareDivisionTier(a, b) {
+    const order = [
+        "bronze",
+        "silver",
+        "gold",
+        "platinum",
+        "diamond",
+        "master",
+        "grandmaster",
+        "ultimate"
+    ];
+    const ai = order.indexOf(a.division);
+    const bi = order.indexOf(b.division);
+    if (ai !== bi) return ai - bi;
+    // tier 1 is highest, tier 5 is lowest
+    return b.tier - a.tier;
+}
+function RoleCard({ role, result, gamemode, showPlatformChip }) {
     const rColor = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleColor"])(role);
     if (result.status === "unranked") {
+        const reason = gamemode === "unranked" ? "No quickplay data this season" : gamemode === "both" ? "No data this season" : "Not ranked this season";
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-            className: "rounded-lg p-5 flex flex-col gap-2 opacity-40",
+            className: "rounded-lg p-5 flex flex-col gap-2",
             style: {
-                background: "var(--surface-2)",
-                border: `1px solid var(--border-subtle)`
+                background: "var(--surface-1)",
+                border: "1px dashed var(--border-subtle)"
             },
             children: [
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1116,34 +1518,67 @@ function RoleCard({ role, result }) {
                     children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleLabel"])(role)
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 21,
+                    lineNumber: 55,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-2xl font-display font-bold opacity-30",
+                    className: "text-2xl font-display font-bold",
+                    style: {
+                        color: "var(--text-tertiary)"
+                    },
                     children: "—"
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 24,
+                    lineNumber: 58,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-xs opacity-50 font-display",
-                    children: "Not ranked this season"
+                    className: "text-xs font-display",
+                    style: {
+                        color: "var(--text-secondary)"
+                    },
+                    children: reason
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 25,
+                    lineNumber: 64,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/mmr/role-card.tsx",
-            lineNumber: 14,
+            lineNumber: 48,
             columnNumber: 7
         }, this);
     }
+    // For ranked + insufficient_games and ranked statuses we share most structure
+    const dLabel = result.division ? `${(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["divisionLabel"])(result.division)} ${result.tier}` : "";
+    const divColor = result.division ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(result.division) : "var(--text-primary)";
+    const hasActualRank = !!result.division && result.tier != null;
+    const sysRank = result.systemRank;
+    // System vs Actual comparison
+    let comparison = null;
+    if (hasActualRank && sysRank) {
+        const cmp = compareDivisionTier({
+            division: sysRank.division,
+            tier: sysRank.tier
+        }, {
+            division: result.division,
+            tier: result.tier
+        });
+        if (cmp > 0) comparison = {
+            arrow: "↑",
+            color: rColor
+        };
+        else if (cmp < 0) comparison = {
+            arrow: "↓",
+            color: "var(--orange-accent)"
+        };
+        else comparison = {
+            arrow: "=",
+            color: "var(--text-tertiary)"
+        };
+    }
     if (result.status === "insufficient_games") {
-        const dLabel = result.division ? `${(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["divisionLabel"])(result.division)} ${result.tier}` : "—";
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
             className: "rounded-lg p-5 flex flex-col gap-2",
             style: {
@@ -1151,69 +1586,83 @@ function RoleCard({ role, result }) {
                 border: `1px solid ${rColor}22`
             },
             children: [
-                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-xs font-display tracking-widest uppercase",
-                    style: {
-                        color: rColor
-                    },
-                    children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleLabel"])(role)
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(RoleHeader, {
+                    role: role,
+                    rColor: rColor,
+                    resolvedPlatform: result.resolvedPlatform,
+                    showPlatformChip: showPlatformChip
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 40,
+                    lineNumber: 101,
                     columnNumber: 9
                 }, this),
                 result.rankIcon && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("img", {
                     src: result.rankIcon,
                     alt: dLabel,
-                    className: "w-12 h-12 opacity-60"
+                    className: "w-12 h-12 opacity-80"
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 44,
+                    lineNumber: 108,
                     columnNumber: 11
                 }, this),
-                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                hasActualRank ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                     className: "text-xs font-display tracking-wide",
                     style: {
-                        color: result.division ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(result.division) : "white"
+                        color: divColor
                     },
                     children: dLabel
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 46,
-                    columnNumber: 9
-                }, this),
+                    lineNumber: 111,
+                    columnNumber: 11
+                }, this) : sysRank ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                    className: "text-xs font-display tracking-wide",
+                    style: {
+                        color: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(sysRank.division)
+                    },
+                    children: [
+                        "System: ",
+                        sysRank.label
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/components/mmr/role-card.tsx",
+                    lineNumber: 118,
+                    columnNumber: 11
+                }, this) : null,
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-lg font-display font-bold opacity-40",
+                    className: "text-lg font-display font-bold",
+                    style: {
+                        color: "var(--text-secondary)"
+                    },
                     children: result.mmr.toLocaleString()
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 52,
+                    lineNumber: 125,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-xs opacity-40 font-display",
+                    className: "text-xs font-display",
                     style: {
                         color: "var(--orange-accent)"
                     },
                     children: "Rank-only estimate · Too few games"
                 }, void 0, false, {
                     fileName: "[project]/components/mmr/role-card.tsx",
-                    lineNumber: 53,
+                    lineNumber: 131,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/mmr/role-card.tsx",
-            lineNumber: 33,
+            lineNumber: 94,
             columnNumber: 7
         }, this);
     }
     // status === "ranked"
-    const dLabel = result.division ? `${(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["divisionLabel"])(result.division)} ${result.tier}` : "";
-    const divColor = result.division ? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(result.division) : "white";
     const conf = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["confidenceLabel"])(result.confidence);
     const modifierPositive = (result.modifier ?? 0) > 0;
     const modifierZero = (result.modifier ?? 0) === 0;
+    const baselineCopy = result.source === "unranked" ? "Inferred from quickplay — no Blizzard rank" : result.source === "blended" ? "vs rank baseline · blended QP+Comp" : "vs rank baseline";
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "rounded-lg p-5 flex flex-col gap-3 transition-all duration-200",
         style: {
@@ -1222,15 +1671,14 @@ function RoleCard({ role, result }) {
             boxShadow: `0 0 20px ${rColor}0a`
         },
         children: [
-            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                className: "text-xs font-display tracking-widest uppercase",
-                style: {
-                    color: rColor
-                },
-                children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleLabel"])(role)
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(RoleHeader, {
+                role: role,
+                rColor: rColor,
+                resolvedPlatform: result.resolvedPlatform,
+                showPlatformChip: showPlatformChip
             }, void 0, false, {
                 fileName: "[project]/components/mmr/role-card.tsx",
-                lineNumber: 77,
+                lineNumber: 162,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1242,24 +1690,69 @@ function RoleCard({ role, result }) {
                         className: "w-10 h-10 shrink-0"
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 84,
+                        lineNumber: 172,
                         columnNumber: 11
                     }, this),
-                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-sm font-display font-semibold tracking-wide",
-                        style: {
-                            color: divColor
-                        },
-                        children: dLabel
-                    }, void 0, false, {
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex flex-col",
+                        children: [
+                            hasActualRank && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-sm font-display font-semibold tracking-wide",
+                                style: {
+                                    color: divColor
+                                },
+                                children: dLabel
+                            }, void 0, false, {
+                                fileName: "[project]/components/mmr/role-card.tsx",
+                                lineNumber: 176,
+                                columnNumber: 13
+                            }, this),
+                            sysRank && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-xs font-display tracking-wide flex items-center gap-1",
+                                style: {
+                                    color: hasActualRank ? "var(--text-secondary)" : (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(sysRank.division)
+                                },
+                                children: [
+                                    hasActualRank ? "System: " : "",
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        style: {
+                                            color: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["rankColor"])(sysRank.division),
+                                            fontWeight: 600
+                                        },
+                                        children: sysRank.label
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/mmr/role-card.tsx",
+                                        lineNumber: 189,
+                                        columnNumber: 15
+                                    }, this),
+                                    comparison && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "ml-0.5 font-bold",
+                                        style: {
+                                            color: comparison.color
+                                        },
+                                        "aria-label": comparison.arrow === "↑" ? "Overperforming" : comparison.arrow === "↓" ? "Underperforming" : "Matches rank",
+                                        children: comparison.arrow
+                                    }, void 0, false, {
+                                        fileName: "[project]/components/mmr/role-card.tsx",
+                                        lineNumber: 193,
+                                        columnNumber: 17
+                                    }, this)
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/components/mmr/role-card.tsx",
+                                lineNumber: 184,
+                                columnNumber: 13
+                            }, this)
+                        ]
+                    }, void 0, true, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 86,
+                        lineNumber: 174,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/mmr/role-card.tsx",
-                lineNumber: 82,
+                lineNumber: 170,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1268,39 +1761,42 @@ function RoleCard({ role, result }) {
                         className: "text-4xl font-display font-black leading-none",
                         style: {
                             letterSpacing: "-0.02em",
-                            color: "white"
+                            color: "var(--text-primary)"
                         },
                         children: result.mmr.toLocaleString()
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 93,
+                        lineNumber: 214,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                         className: "text-sm font-display mt-1 font-semibold",
                         style: {
-                            color: modifierZero ? "rgba(255,255,255,0.3)" : modifierPositive ? "var(--role-support)" : "var(--role-damage)"
+                            color: modifierZero ? "var(--text-tertiary)" : modifierPositive ? "var(--role-support)" : "var(--role-damage)"
                         },
                         children: [
                             modifierZero ? "±0" : modifierPositive ? `+${result.modifier}` : result.modifier,
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                className: "text-xs font-normal ml-1 opacity-60",
-                                children: "vs rank baseline"
+                                className: "text-xs font-normal ml-1",
+                                style: {
+                                    color: "var(--text-tertiary)"
+                                },
+                                children: baselineCopy
                             }, void 0, false, {
                                 fileName: "[project]/components/mmr/role-card.tsx",
-                                lineNumber: 111,
+                                lineNumber: 232,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 100,
+                        lineNumber: 221,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/mmr/role-card.tsx",
-                lineNumber: 92,
+                lineNumber: 213,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1309,39 +1805,77 @@ function RoleCard({ role, result }) {
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                         className: "text-xs font-display tracking-wide px-2 py-0.5 rounded",
                         style: {
-                            background: `${conf.color}18`,
+                            background: `${conf.color}40`,
                             color: conf.color,
-                            border: `1px solid ${conf.color}30`
+                            border: `1px solid ${conf.color}55`
                         },
                         children: conf.label
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 117,
+                        lineNumber: 243,
                         columnNumber: 9
                     }, this),
                     result.reason === "potential_smurf" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                         className: "text-xs font-display tracking-wide px-2 py-0.5 rounded",
                         style: {
-                            background: "rgba(255,124,42,0.1)",
+                            background: "rgba(255,124,42,0.15)",
                             color: "var(--orange-accent)",
-                            border: "1px solid rgba(255,124,42,0.3)"
+                            border: "1px solid rgba(255,124,42,0.35)"
                         },
                         children: "⚠ New / smurf?"
                     }, void 0, false, {
                         fileName: "[project]/components/mmr/role-card.tsx",
-                        lineNumber: 128,
+                        lineNumber: 254,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/mmr/role-card.tsx",
-                lineNumber: 116,
+                lineNumber: 242,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/mmr/role-card.tsx",
-        lineNumber: 68,
+        lineNumber: 154,
+        columnNumber: 5
+    }, this);
+}
+function RoleHeader({ role, rColor, resolvedPlatform, showPlatformChip }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "flex items-center gap-2 flex-wrap",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                className: "text-xs font-display tracking-widest uppercase",
+                style: {
+                    color: rColor
+                },
+                children: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleLabel"])(role)
+            }, void 0, false, {
+                fileName: "[project]/components/mmr/role-card.tsx",
+                lineNumber: 283,
+                columnNumber: 7
+            }, this),
+            showPlatformChip && resolvedPlatform && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                className: "text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5 rounded",
+                style: {
+                    background: "rgba(0,212,255,0.08)",
+                    color: "var(--cyan-accent)",
+                    border: "1px solid rgba(0,212,255,0.2)"
+                },
+                children: [
+                    "· ",
+                    resolvedPlatform.toUpperCase()
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/mmr/role-card.tsx",
+                lineNumber: 290,
+                columnNumber: 9
+            }, this)
+        ]
+    }, void 0, true, {
+        fileName: "[project]/components/mmr/role-card.tsx",
+        lineNumber: 282,
         columnNumber: 5
     }, this);
 }
@@ -1371,8 +1905,7 @@ function PrimaryMMRDisplay({ primary }) {
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                 className: "text-xs font-display tracking-[0.4em] uppercase mb-3",
                 style: {
-                    color: "var(--cyan-accent)",
-                    opacity: 0.7
+                    color: "var(--cyan-accent)"
                 },
                 children: "Estimated MMR"
             }, void 0, false, {
@@ -1387,7 +1920,7 @@ function PrimaryMMRDisplay({ primary }) {
                     style: {
                         fontSize: "clamp(72px, 16vw, 128px)",
                         letterSpacing: "-0.04em",
-                        color: "white",
+                        color: "var(--text-primary)",
                         textShadow: "0 0 40px rgba(0,212,255,0.2)"
                     },
                     children: primary.mmr.toLocaleString()
@@ -1415,13 +1948,15 @@ function PrimaryMMRDisplay({ primary }) {
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                 className: "text-sm font-display mt-2 tracking-wide",
                 style: {
-                    color: conf.color,
-                    opacity: 0.8
+                    color: conf.color
                 },
                 children: [
                     conf.label,
                     primary.contributingRoles.length < 3 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                        className: "opacity-60 ml-2 text-xs",
+                        className: "ml-2 text-xs",
+                        style: {
+                            color: "var(--text-secondary)"
+                        },
                         children: [
                             "(based on ",
                             primary.contributingRoles.map(__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$rank$2d$utils$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["roleLabel"]).join(" + "),
@@ -1448,7 +1983,7 @@ function PrimaryMMRDisplay({ primary }) {
 function NoPrimaryMMR({ roles }) {
     const rankedRoles = roles.filter(Boolean);
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-        className: "text-center py-8 opacity-60",
+        className: "text-center py-8",
         children: [
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                 className: "text-xs font-display tracking-[0.4em] uppercase mb-3",
@@ -1458,29 +1993,35 @@ function NoPrimaryMMR({ roles }) {
                 children: "Primary MMR"
             }, void 0, false, {
                 fileName: "[project]/components/mmr/primary-mmr.tsx",
-                lineNumber: 65,
+                lineNumber: 68,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                className: "text-2xl font-display font-bold text-white",
+                className: "text-2xl font-display font-bold",
+                style: {
+                    color: "var(--text-primary)"
+                },
                 children: "—"
             }, void 0, false, {
                 fileName: "[project]/components/mmr/primary-mmr.tsx",
-                lineNumber: 71,
+                lineNumber: 74,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                className: "text-sm font-display mt-2 opacity-60",
+                className: "text-sm font-display mt-2",
+                style: {
+                    color: "var(--text-secondary)"
+                },
                 children: rankedRoles.length === 0 ? "No competitive rank found on this platform" : "Need ≥20 competitive games per role for primary estimate"
             }, void 0, false, {
                 fileName: "[project]/components/mmr/primary-mmr.tsx",
-                lineNumber: 72,
+                lineNumber: 80,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/mmr/primary-mmr.tsx",
-        lineNumber: 64,
+        lineNumber: 67,
         columnNumber: 5
     }, this);
 }
@@ -1545,6 +2086,14 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$mmr$2f$breakdo
 ;
 ;
 ;
+function parsePlatform(raw) {
+    if (raw === "console" || raw === "mixed" || raw === "pc") return raw;
+    return "pc";
+}
+function parseGamemode(raw) {
+    if (raw === "unranked" || raw === "both" || raw === "ranked") return raw;
+    return "ranked";
+}
 async function generateMetadata({ params, searchParams }) {
     const { tag } = await params;
     const { platform } = await searchParams;
@@ -1559,21 +2108,41 @@ const ROLES = [
     "damage",
     "support"
 ];
+const PLATFORMS = [
+    "pc",
+    "console",
+    "mixed"
+];
+const GAMEMODES = [
+    "ranked",
+    "unranked",
+    "both"
+];
+const PLATFORM_LABEL = {
+    pc: "PC",
+    console: "CONSOLE",
+    mixed: "MIXED"
+};
+const GAMEMODE_LABEL = {
+    ranked: "RANKED",
+    unranked: "UNRANKED",
+    both: "BOTH"
+};
 async function PlayerPage({ params, searchParams }) {
     const { tag } = await params;
-    const { platform: platformParam } = await searchParams;
-    const platform = platformParam === "console" ? "console" : "pc";
-    const data = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$fetch$2d$player$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["fetchPlayerData"])(tag, platform);
+    const sp = await searchParams;
+    const platform = parsePlatform(sp.platform);
+    const gamemode = parseGamemode(sp.gamemode);
+    const data = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$fetch$2d$player$2e$ts__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["fetchPlayerData"])(tag, platform, gamemode);
     if (data.status === "not_found") (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$components$2f$navigation$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["notFound"])();
     if (data.status === "private") {
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(ErrorPage, {
             title: "Private Profile",
             message: `${data.username}'s career is set to private.`,
-            detail: "They can enable it at battle.net/account/management/profile-privacy.",
-            tag: tag
+            detail: "They can enable it at battle.net/account/management/profile-privacy."
         }, void 0, false, {
             fileName: "[project]/app/player/[tag]/page.tsx",
-            lineNumber: 38,
+            lineNumber: 63,
             columnNumber: 7
         }, this);
     }
@@ -1581,11 +2150,10 @@ async function PlayerPage({ params, searchParams }) {
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(ErrorPage, {
             title: "Rate Limited",
             message: "We've hit the API rate limit.",
-            detail: "Please wait a moment and try again.",
-            tag: tag
+            detail: "Please wait a moment and try again."
         }, void 0, false, {
             fileName: "[project]/app/player/[tag]/page.tsx",
-            lineNumber: 49,
+            lineNumber: 73,
             columnNumber: 7
         }, this);
     }
@@ -1593,19 +2161,20 @@ async function PlayerPage({ params, searchParams }) {
         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(ErrorPage, {
             title: "Upstream Error",
             message: "The OverFast API is temporarily unavailable.",
-            detail: data.message,
-            tag: tag
+            detail: data.message
         }, void 0, false, {
             fileName: "[project]/app/player/[tag]/page.tsx",
-            lineNumber: 60,
+            lineNumber: 83,
             columnNumber: 7
         }, this);
     }
     const displayTag = tag.replace(/-(?=\d{4,8}$)/, "#");
+    const buildHref = (next)=>`/player/${tag}?platform=${next.platform ?? platform}&gamemode=${next.gamemode ?? gamemode}`;
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen",
         style: {
-            background: "var(--surface-0)"
+            background: "var(--surface-0)",
+            color: "var(--text-primary)"
         },
         children: [
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1619,7 +2188,7 @@ async function PlayerPage({ params, searchParams }) {
                 }
             }, void 0, false, {
                 fileName: "[project]/app/player/[tag]/page.tsx",
-                lineNumber: 77,
+                lineNumber: 101,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1629,13 +2198,12 @@ async function PlayerPage({ params, searchParams }) {
                         href: "/",
                         className: "inline-flex items-center gap-2 text-xs font-display tracking-widest uppercase mb-8 transition-opacity hover:opacity-70",
                         style: {
-                            color: "var(--cyan-accent)",
-                            opacity: 0.6
+                            color: "var(--cyan-accent)"
                         },
                         children: "← Back"
                     }, void 0, false, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 90,
+                        lineNumber: 114,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1650,7 +2218,7 @@ async function PlayerPage({ params, searchParams }) {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 101,
+                                lineNumber: 125,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1659,12 +2227,13 @@ async function PlayerPage({ params, searchParams }) {
                                         className: "font-display font-black leading-none",
                                         style: {
                                             fontSize: "clamp(28px, 6vw, 42px)",
-                                            letterSpacing: "-0.02em"
+                                            letterSpacing: "-0.02em",
+                                            color: "var(--text-primary)"
                                         },
                                         children: displayTag
                                     }, void 0, false, {
                                         fileName: "[project]/app/player/[tag]/page.tsx",
-                                        lineNumber: 109,
+                                        lineNumber: 133,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1677,21 +2246,37 @@ async function PlayerPage({ params, searchParams }) {
                                                     color: "var(--cyan-accent)",
                                                     border: "1px solid rgba(0,212,255,0.2)"
                                                 },
-                                                children: data.platform.toUpperCase()
+                                                children: PLATFORM_LABEL[data.platform]
                                             }, void 0, false, {
                                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                                lineNumber: 116,
+                                                lineNumber: 144,
+                                                columnNumber: 15
+                                            }, this),
+                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                className: "text-xs font-display tracking-widest uppercase px-2 py-0.5 rounded",
+                                                style: {
+                                                    background: "rgba(0,212,255,0.06)",
+                                                    color: "var(--cyan-accent)",
+                                                    border: "1px solid rgba(0,212,255,0.15)"
+                                                },
+                                                children: GAMEMODE_LABEL[data.gamemode]
+                                            }, void 0, false, {
+                                                fileName: "[project]/app/player/[tag]/page.tsx",
+                                                lineNumber: 154,
                                                 columnNumber: 15
                                             }, this),
                                             data.season && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                                className: "text-xs font-display opacity-40 tracking-wide",
+                                                className: "text-xs font-display tracking-wide",
+                                                style: {
+                                                    color: "var(--text-tertiary)"
+                                                },
                                                 children: [
                                                     "Season ",
                                                     data.season
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                                lineNumber: 127,
+                                                lineNumber: 165,
                                                 columnNumber: 17
                                             }, this),
                                             data.statsPartial && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1704,25 +2289,25 @@ async function PlayerPage({ params, searchParams }) {
                                                 children: "Stats unavailable · Rank-only estimate"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                                lineNumber: 132,
+                                                lineNumber: 173,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/player/[tag]/page.tsx",
-                                        lineNumber: 115,
+                                        lineNumber: 143,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 108,
+                                lineNumber: 132,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 99,
+                        lineNumber: 123,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1740,7 +2325,7 @@ async function PlayerPage({ params, searchParams }) {
                                 }
                             }, void 0, false, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 156,
+                                lineNumber: 197,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1749,105 +2334,164 @@ async function PlayerPage({ params, searchParams }) {
                                     primary: data.mmr.primary
                                 }, void 0, false, {
                                     fileName: "[project]/app/player/[tag]/page.tsx",
-                                    lineNumber: 165,
+                                    lineNumber: 206,
                                     columnNumber: 15
                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$mmr$2f$primary$2d$mmr$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["NoPrimaryMMR"], {
                                     roles: ROLES
                                 }, void 0, false, {
                                     fileName: "[project]/app/player/[tag]/page.tsx",
-                                    lineNumber: 167,
+                                    lineNumber: 208,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 163,
+                                lineNumber: 204,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 148,
+                        lineNumber: 189,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6",
                         children: ROLES.map((role)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$mmr$2f$role$2d$card$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["RoleCard"], {
                                 role: role,
-                                result: data.mmr.perRole[role]
+                                result: data.mmr.perRole[role],
+                                gamemode: data.gamemode,
+                                showPlatformChip: data.platform === "mixed"
                             }, role, false, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 175,
+                                lineNumber: 216,
                                 columnNumber: 13
                             }, this))
                     }, void 0, false, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 173,
+                        lineNumber: 214,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                        className: "flex items-center gap-2 mb-6",
+                        className: "rounded-lg mb-6 overflow-hidden",
+                        style: {
+                            background: "var(--surface-1)",
+                            border: "1px solid var(--border-subtle)"
+                        },
                         children: [
-                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                className: "text-xs tracking-widest uppercase opacity-30 font-display mr-1",
-                                children: "Platform"
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(ToggleRow, {
+                                label: "Platform",
+                                options: PLATFORMS,
+                                value: platform,
+                                labelFor: (p)=>PLATFORM_LABEL[p],
+                                hrefFor: (p)=>buildHref({
+                                        platform: p
+                                    })
                             }, void 0, false, {
                                 fileName: "[project]/app/player/[tag]/page.tsx",
-                                lineNumber: 181,
+                                lineNumber: 234,
                                 columnNumber: 11
                             }, this),
-                            [
-                                "pc",
-                                "console"
-                            ].map((p)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"], {
-                                    href: `/player/${tag}?platform=${p}`,
-                                    className: "px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150",
-                                    style: {
-                                        background: platform === p ? "var(--cyan-accent)" : "var(--surface-2)",
-                                        color: platform === p ? "var(--surface-0)" : "rgba(255,255,255,0.4)",
-                                        border: platform === p ? "1px solid var(--cyan-accent)" : "1px solid var(--border-subtle)",
-                                        fontWeight: platform === p ? 700 : 400
-                                    },
-                                    children: p === "pc" ? "PC" : "CONSOLE"
-                                }, p, false, {
-                                    fileName: "[project]/app/player/[tag]/page.tsx",
-                                    lineNumber: 183,
-                                    columnNumber: 13
-                                }, this))
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                style: {
+                                    borderTop: "1px solid var(--border-subtle)"
+                                }
+                            }, void 0, false, {
+                                fileName: "[project]/app/player/[tag]/page.tsx",
+                                lineNumber: 241,
+                                columnNumber: 11
+                            }, this),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(ToggleRow, {
+                                label: "Game mode",
+                                options: GAMEMODES,
+                                value: gamemode,
+                                labelFor: (g)=>GAMEMODE_LABEL[g],
+                                hrefFor: (g)=>buildHref({
+                                        gamemode: g
+                                    })
+                            }, void 0, false, {
+                                fileName: "[project]/app/player/[tag]/page.tsx",
+                                lineNumber: 242,
+                                columnNumber: 11
+                            }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 180,
+                        lineNumber: 227,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$mmr$2f$breakdown$2e$tsx__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["AlgorithmBreakdown"], {
-                        mmr: data.mmr
+                        mmr: data.mmr,
+                        gamemode: data.gamemode
                     }, void 0, false, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 203,
+                        lineNumber: 252,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                        className: "text-xs opacity-20 font-display text-center mt-8 tracking-wide",
+                        className: "text-xs font-display text-center mt-8 tracking-wide",
+                        style: {
+                            color: "var(--text-disabled)"
+                        },
                         children: "Unofficial estimate · Our model's estimate, not Blizzard's official MMR · Not affiliated with Blizzard Entertainment"
                     }, void 0, false, {
                         fileName: "[project]/app/player/[tag]/page.tsx",
-                        lineNumber: 206,
+                        lineNumber: 255,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/app/player/[tag]/page.tsx",
-                lineNumber: 88,
+                lineNumber: 112,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/app/player/[tag]/page.tsx",
-        lineNumber: 72,
+        lineNumber: 96,
         columnNumber: 5
     }, this);
 }
-function ErrorPage({ title, message, detail, tag }) {
+function ToggleRow({ label, options, value, labelFor, hrefFor }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "flex flex-wrap items-center gap-2 px-4 py-3",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                className: "text-xs tracking-widest uppercase font-display mr-2 w-20 shrink-0",
+                style: {
+                    color: "var(--text-tertiary)"
+                },
+                children: label
+            }, void 0, false, {
+                fileName: "[project]/app/player/[tag]/page.tsx",
+                lineNumber: 278,
+                columnNumber: 7
+            }, this),
+            options.map((opt)=>{
+                const active = opt === value;
+                return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"], {
+                    href: hrefFor(opt),
+                    className: "px-4 py-1.5 rounded text-xs font-display tracking-widest uppercase transition-all duration-150",
+                    style: {
+                        background: active ? "var(--cyan-accent)" : "var(--surface-2)",
+                        color: active ? "var(--surface-0)" : "var(--text-secondary)",
+                        border: active ? "1px solid var(--cyan-accent)" : "1px solid var(--border-subtle)",
+                        fontWeight: active ? 700 : 500
+                    },
+                    children: labelFor(opt)
+                }, opt, false, {
+                    fileName: "[project]/app/player/[tag]/page.tsx",
+                    lineNumber: 287,
+                    columnNumber: 11
+                }, this);
+            })
+        ]
+    }, void 0, true, {
+        fileName: "[project]/app/player/[tag]/page.tsx",
+        lineNumber: 277,
+        columnNumber: 5
+    }, this);
+}
+function ErrorPage({ title, message, detail }) {
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen flex items-center justify-center px-4",
         style: {
@@ -1864,24 +2508,30 @@ function ErrorPage({ title, message, detail, tag }) {
                     children: title
                 }, void 0, false, {
                     fileName: "[project]/app/player/[tag]/page.tsx",
-                    lineNumber: 232,
+                    lineNumber: 321,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                     className: "text-xl font-display font-bold mb-2",
+                    style: {
+                        color: "var(--text-primary)"
+                    },
                     children: message
                 }, void 0, false, {
                     fileName: "[project]/app/player/[tag]/page.tsx",
-                    lineNumber: 238,
+                    lineNumber: 327,
                     columnNumber: 9
                 }, this),
                 detail && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                    className: "text-sm opacity-50 font-display mb-8",
+                    className: "text-sm font-display mb-8",
+                    style: {
+                        color: "var(--text-secondary)"
+                    },
                     children: detail
                 }, void 0, false, {
                     fileName: "[project]/app/player/[tag]/page.tsx",
-                    lineNumber: 239,
-                    columnNumber: 20
+                    lineNumber: 334,
+                    columnNumber: 11
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$rsc$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$react$2d$server$2e$js__$5b$app$2d$rsc$5d$__$28$ecmascript$29$__["default"], {
                     href: "/",
@@ -1894,18 +2544,18 @@ function ErrorPage({ title, message, detail, tag }) {
                     children: "Search Again"
                 }, void 0, false, {
                     fileName: "[project]/app/player/[tag]/page.tsx",
-                    lineNumber: 240,
+                    lineNumber: 341,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/app/player/[tag]/page.tsx",
-            lineNumber: 231,
+            lineNumber: 320,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/app/player/[tag]/page.tsx",
-        lineNumber: 227,
+        lineNumber: 316,
         columnNumber: 5
     }, this);
 }
