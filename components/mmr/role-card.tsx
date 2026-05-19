@@ -10,7 +10,9 @@ import {
 import { RankTile } from "@/components/mmr/rank-tile";
 import { RoleIcon } from "@/components/mmr/role-icon";
 import { HeroPortrait } from "@/components/mmr/hero-portrait";
-import { ArrowUp, ArrowDown, Minus, Sparkles } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Sparkles } from "@/components/icons";
+import { ROLE_TINT_06, ROLE_TINT_20, ROLE_TINT_25, DAMAGE_TINT_08 } from "@/lib/role-tints";
+import { MUTED_DAMAGE_COLOR } from "@/lib/og/precompute";
 
 interface RoleCardProps {
   role: Role;
@@ -82,9 +84,9 @@ export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardP
       className="rounded-lg flex flex-col overflow-hidden transition-all duration-200"
       style={{
         background: "var(--surface-2)",
-        border: `1px solid color-mix(in srgb, ${rColor} 20%, transparent)`,
+        border: `1px solid ${ROLE_TINT_20[role]}`,
         borderTop: `4px solid ${rColor}`,
-        boxShadow: `0 0 24px color-mix(in srgb, ${rColor} 6%, transparent)`,
+        boxShadow: `0 0 24px ${ROLE_TINT_06[role]}`,
       }}
     >
       <div className="p-5 flex flex-col gap-4">
@@ -192,13 +194,13 @@ export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardP
                   style={{
                     width: 28,
                     height: 28,
-                    color: "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)",
+                    color: MUTED_DAMAGE_COLOR,
                   }}
                   strokeWidth={2.5}
                 />
                 <span
                   className="font-mono text-xs font-bold"
-                  style={{ color: "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)" }}
+                  style={{ color: MUTED_DAMAGE_COLOR }}
                 >
                   {diff}
                 </span>
@@ -295,12 +297,12 @@ export function RoleCard({ role, result, gamemode, showPlatformChip }: RoleCardP
                     ? "var(--text-tertiary)"
                     : modifierPositive
                     ? "var(--role-support)"
-                    : "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)",
+                    : MUTED_DAMAGE_COLOR,
                   background: modifierZero
                     ? "transparent"
                     : modifierPositive
                     ? "rgba(91,245,160,0.1)"
-                    : "rgba(245,91,91,0.08)",
+                    : DAMAGE_TINT_08,
                 }}
               >
                 {modifierZero ? "±0" : modifierPositive ? `+${result.modifier}` : result.modifier}

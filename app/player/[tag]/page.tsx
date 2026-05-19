@@ -7,7 +7,7 @@ import { RoleCard } from "@/components/mmr/role-card";
 import { PrimaryMMRDisplay, NoPrimaryMMR } from "@/components/mmr/primary-mmr";
 import { AlgorithmBreakdown } from "@/components/mmr/breakdown";
 import { ShareCard } from "@/components/mmr/share-card";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "@/components/icons";
 import type { Platform, Role, Gamemode } from "@/lib/algorithm/types";
 import { buildOgUrl } from "@/lib/og/build-share-url";
 

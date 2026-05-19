@@ -11,7 +11,9 @@ import { mmrToLabel } from "@/lib/algorithm";
 import { Verdict } from "@/components/mmr/verdict";
 import { RoleIcon } from "@/components/mmr/role-icon";
 import { ShareButton } from "@/components/mmr/share-button";
-import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus } from "@/components/icons";
+import { ROLE_TINT_25, ROLE_TINT_30 } from "@/lib/role-tints";
+import { MUTED_DAMAGE_COLOR } from "@/lib/og/precompute";
 
 const ROLES: Role[] = ["tank", "damage", "support"];
 const ROLE_SHORT: Record<Role, string> = { tank: "TANK", damage: "DPS", support: "SUP" };
@@ -214,7 +216,7 @@ export function ShareCard({
                 ? "var(--text-tertiary)"
                 : diff > 0
                 ? "var(--cyan-accent)"
-                : "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)";
+                : MUTED_DAMAGE_COLOR;
 
             const magnitude =
               diff === null || diff === 0
@@ -232,7 +234,7 @@ export function ShareCard({
                 className="flex flex-col items-center gap-1 px-2 py-3 relative"
                 style={{
                   background: "var(--surface-1)",
-                  borderTop: `2px solid color-mix(in srgb, ${rColor} 30%, transparent)`,
+                  borderTop: `2px solid ${ROLE_TINT_30[role]}`,
                 }}
               >
                 {/* Role icon + label */}
@@ -261,7 +263,7 @@ export function ShareCard({
                       objectFit: "cover",
                       borderRadius: 3,
                       opacity: 0.7,
-                      border: `1px solid color-mix(in srgb, ${rColor} 25%, transparent)`,
+                      border: `1px solid ${ROLE_TINT_25[role]}`,
                     }}
                   />
                 )}
