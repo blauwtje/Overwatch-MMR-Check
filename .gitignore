@@ -427,3 +427,10 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Next.js / Turbopack build artifacts
+.next/
+.turbo/
+
+# Claude Code worktrees
+.claude/worktrees/
