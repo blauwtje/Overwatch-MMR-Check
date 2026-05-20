@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "heroes": "tsx scripts/fetch-hero-portraits.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
