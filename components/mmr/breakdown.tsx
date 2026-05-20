@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import type { MMREstimate, Role, Gamemode } from "@/lib/algorithm/types";
 import { roleLabel, roleColor } from "@/lib/rank-utils";
+import { RoleRadar } from "@/components/mmr/role-radar";
 
 interface BreakdownProps {
   mmr: MMREstimate;
@@ -18,7 +19,30 @@ const ZSCORE_LABELS: Record<string, string> = {
   topHeroKda: "Top hero KDA",
 };
 
-export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
+const BreakdownHeader = memo(function BreakdownHeader({ algorithmVersion }: { algorithmVersion: string }) {
+  return (
+    <>
+      <span
+        className="text-xs font-display tracking-widest uppercase"
+        style={{ color: "var(--cyan-accent)" }}
+      >
+        Algorithm breakdown
+      </span>
+      <span
+        className="text-xs font-display px-2 py-0.5 rounded"
+        style={{
+          background: "rgba(0,212,255,0.18)",
+          color: "var(--cyan-accent)",
+          border: "1px solid rgba(0,212,255,0.2)",
+        }}
+      >
+        v{algorithmVersion}
+      </span>
+    </>
+  );
+});
+
+export const AlgorithmBreakdown = memo(function AlgorithmBreakdown({ mmr }: BreakdownProps) {
   const [open, setOpen] = useState(false);
   const roles: Role[] = ["tank", "damage", "support"];
 
@@ -34,22 +58,7 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
         style={{ background: "var(--surface-1)" }}
       >
         <div className="flex items-center gap-3">
-          <span
-            className="text-xs font-display tracking-widest uppercase"
-            style={{ color: "var(--cyan-accent)" }}
-          >
-            Algorithm breakdown
-          </span>
-          <span
-            className="text-xs font-display px-2 py-0.5 rounded"
-            style={{
-              background: "rgba(0,212,255,0.18)",
-              color: "var(--cyan-accent)",
-              border: "1px solid rgba(0,212,255,0.2)",
-            }}
-          >
-            v{mmr.algorithmVersion}
-          </span>
+          <BreakdownHeader algorithmVersion={mmr.algorithmVersion} />
         </div>
         <span
           className="text-lg transition-transform duration-200 font-display"
@@ -68,22 +77,7 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
         className="hidden lg:flex items-center gap-3 px-5 py-4"
         style={{ background: "var(--surface-1)", borderBottom: "1px solid var(--border-subtle)" }}
       >
-        <span
-          className="text-xs font-display tracking-widest uppercase"
-          style={{ color: "var(--cyan-accent)" }}
-        >
-          Algorithm breakdown
-        </span>
-        <span
-          className="text-xs font-display px-2 py-0.5 rounded"
-          style={{
-            background: "rgba(0,212,255,0.18)",
-            color: "var(--cyan-accent)",
-            border: "1px solid rgba(0,212,255,0.2)",
-          }}
-        >
-          v{mmr.algorithmVersion}
-        </span>
+        <BreakdownHeader algorithmVersion={mmr.algorithmVersion} />
       </div>
 
       {/* Content — mobile: accordion; desktop: always open */}
@@ -154,6 +148,11 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
                       }}
                     />
                   </div>
+                </div>
+
+                {/* Role radar chart */}
+                <div className="mb-3">
+                  <RoleRadar zScores={bd.zScores} roleColor={rColor} size={220} />
                 </div>
 
                 {/* Modifier breakdown */}
@@ -255,4 +254,4 @@ export function AlgorithmBreakdown({ mmr }: BreakdownProps) {
       </div>
     </div>
   );
-}
+});

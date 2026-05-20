@@ -11,7 +11,9 @@ import { mmrToLabel } from "@/lib/algorithm";
 import { Verdict } from "@/components/mmr/verdict";
 import { RoleIcon } from "@/components/mmr/role-icon";
 import { ShareButton } from "@/components/mmr/share-button";
-import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus } from "@/components/icons";
+import { ROLE_TINT_25, ROLE_TINT_30 } from "@/lib/role-tints";
+import { MUTED_DAMAGE_COLOR } from "@/lib/og/precompute";
 
 const ROLES: Role[] = ["tank", "damage", "support"];
 const ROLE_SHORT: Record<Role, string> = { tank: "TANK", damage: "DPS", support: "SUP" };
@@ -26,6 +28,7 @@ interface ShareCardProps {
   gamemode: Gamemode;
   mmr: MMREstimate;
   shareUrl: string;
+  ogUrl?: string;
 }
 
 export function ShareCard({
@@ -36,6 +39,7 @@ export function ShareCard({
   gamemode,
   mmr,
   shareUrl,
+  ogUrl,
 }: ShareCardProps) {
   const verdictInputs = ROLES.map((role) => {
     const r = mmr.perRole[role];
@@ -67,7 +71,7 @@ export function ShareCard({
   return (
     <section
       id="share-card-root"
-      className="rounded-xl relative overflow-hidden mb-6"
+      className="rounded-xl relative overflow-hidden mb-6 animate-in fade-in slide-in-from-bottom-2 duration-500"
       style={{
         background: "var(--surface-1)",
         border: "1px solid var(--border-accent)",
@@ -158,13 +162,15 @@ export function ShareCard({
             title={`owMMR — ${displayTag}`}
             text={shareText}
             url={shareUrl}
+            ogUrl={ogUrl}
+            displayTag={displayTag}
             className="shrink-0"
           />
         </div>
 
         {/* Verdict — dominant typographic block */}
         {!primaryMissing && (
-          <div className="px-5 sm:px-6 pb-4">
+          <div className="px-5 sm:px-6 pb-4 animate-in fade-in zoom-in-95 delay-100 duration-300">
             <Verdict delta={delta} smurfFlag={smurfFlag} size="lg" />
             {mmr.primary && (
               <p className="font-mono text-xs mt-1.5" style={{ color: "var(--text-tertiary)" }}>
@@ -210,7 +216,7 @@ export function ShareCard({
                 ? "var(--text-tertiary)"
                 : diff > 0
                 ? "var(--cyan-accent)"
-                : "color-mix(in oklab, var(--role-damage) 70%, var(--text-secondary) 30%)";
+                : MUTED_DAMAGE_COLOR;
 
             const magnitude =
               diff === null || diff === 0
@@ -228,7 +234,7 @@ export function ShareCard({
                 className="flex flex-col items-center gap-1 px-2 py-3 relative"
                 style={{
                   background: "var(--surface-1)",
-                  borderTop: `2px solid color-mix(in srgb, ${rColor} 30%, transparent)`,
+                  borderTop: `2px solid ${ROLE_TINT_30[role]}`,
                 }}
               >
                 {/* Role icon + label */}
@@ -257,7 +263,7 @@ export function ShareCard({
                       objectFit: "cover",
                       borderRadius: 3,
                       opacity: 0.7,
-                      border: `1px solid color-mix(in srgb, ${rColor} 25%, transparent)`,
+                      border: `1px solid ${ROLE_TINT_25[role]}`,
                     }}
                   />
                 )}

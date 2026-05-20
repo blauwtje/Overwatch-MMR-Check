@@ -23,6 +23,7 @@ export function Verdict({ delta, smurfFlag, size = "md", className }: VerdictPro
       className={cn(
         "font-display font-black uppercase tracking-[0.05em]",
         isLarge ? "text-2xl sm:text-3xl" : "text-xl",
+        isLarge && (binding.tone === "above" || binding.tone === "smurf") && "animate-pulse-glow",
         className
       )}
       style={{
